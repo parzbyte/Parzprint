@@ -34,6 +34,25 @@ BOX_SELECTED = QColor(30, 136, 229, 128)
 BOX_HOVER = QColor("#1E88E5")
 
 
+class _TextInput(QLineEdit):
+    """Campo da ferramenta Texto: Enter confirma e Esc cancela, sem repassar a tecla
+    para o overlay (onde Enter copiaria a imagem e Esc fecharia a captura)."""
+
+    committed = Signal()
+    cancelled = Signal()
+
+    def keyPressEvent(self, e):
+        if e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            e.accept()
+            self.committed.emit()
+            return
+        if e.key() == Qt.Key.Key_Escape:
+            e.accept()
+            self.cancelled.emit()
+            return
+        super().keyPressEvent(e)
+
+
 class Editor(QObject):
     closed = Signal()
 
@@ -67,6 +86,7 @@ class Editor(QObject):
         self.bottom.copy_requested.connect(self.copy)
         self.bottom.print_requested.connect(self.print_)
         self.bottom.text_requested.connect(self.request_text)
+        self._last_sel = QRect(overlay.sel)
         overlay.selection_changed.connect(self._on_selection_changed)
         overlay.editor = self
         self.side.show()
@@ -106,6 +126,17 @@ class Editor(QObject):
 
     def _on_selection_changed(self, _rect) -> None:
         self._finish_text()
+        new, old = QRect(self.ov.sel), self._last_sel
+        self._last_sel = new
+        if new == old:
+            return
+        if new.size() != old.size():
+            # redimensionou: as anotações ficam sobre o mesmo conteúdo da tela
+            # (mover a seleção inteira, sem mudar o tamanho, leva as anotações junto)
+            dx = (old.x() - new.x()) * self.scale
+            dy = (old.y() - new.y()) * self.scale
+            if dx or dy:
+                self.stack.translate(dx, dy)
         self._base = None
         self._committed = None
         self._ocr_blocks = None
@@ -236,7 +267,7 @@ class Editor(QObject):
 
     # ---------- ferramenta de texto ----------
     def _start_text(self, pos: QPointF, pt: Point) -> None:
-        edit = QLineEdit(self.ov)
+        edit = _TextInput(self.ov)
         f = QFont()
         f.setPixelSize(TEXT_SIZE)
         edit.setFont(f)
@@ -246,7 +277,8 @@ class Editor(QObject):
         )
         edit.move(pos.toPoint())
         edit.resize(220, TEXT_SIZE + 10)
-        edit.returnPressed.connect(self._finish_text)
+        edit.committed.connect(self._finish_text)
+        edit.cancelled.connect(self._cancel_text)
         edit.editingFinished.connect(self._finish_text)
         edit.show()
         edit.setFocus()
@@ -267,9 +299,20 @@ class Editor(QObject):
         self.ov.setFocus()
         self.ov.update()
 
+    def _cancel_text(self) -> None:
+        """Esc no campo de texto descarta só o texto, não a captura."""
+        self._text_origin = None
+        edit, self._text_edit = self._text_edit, None
+        if edit is not None:
+            edit.hide()
+            edit.deleteLater()
+        self.ov.setFocus()
+        self.ov.update()
+
     # ---------- teclado ----------
     def key(self, e) -> bool:
-        if self.text_mode and e.matches(QKeySequence.StandardKey.Copy) and self._model.selected_indices():
+        if self.text_mode and e.matches(QKeySequence.StandardKey.Copy):
+            # com o painel aberto, Ctrl+C é sobre texto; sem seleção não faz nada
             self._copy_selected_text()
         elif e.matches(QKeySequence.StandardKey.Undo):
             self.undo()

@@ -70,3 +70,19 @@ def test_render_text_draws_something():
 def test_render_keeps_mode():
     img = Image.new("RGB", (10, 10), "white")
     assert render(img, []).mode == "RGB"
+
+
+def test_stack_translate_moves_every_kind():
+    from parzprint.annotations import Line, Marker, Text
+
+    s = AnnotationStack()
+    s.add(Rect(Point(0, 0), Point(2, 2), "#000000"))
+    s.add(Marker([Point(1, 1)], "#000000"))
+    s.add(Text(Point(3, 3), "a", "#000000"))
+    s.add(Line(Point(0, 1), Point(1, 0), "#000000"))
+    s.translate(10, -1)
+    r, m, t, ln = s.items()
+    assert (r.start, r.end) == (Point(10, -1), Point(12, 1))
+    assert m.points == [Point(11, 0)]
+    assert t.position == Point(13, 2)
+    assert (ln.start, ln.end) == (Point(10, 0), Point(11, -1))

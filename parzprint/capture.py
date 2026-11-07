@@ -24,9 +24,12 @@ class Monitor:
     width: int
     height: int
     image: Image.Image
+    dpr: float | None = None  # devicePixelRatio do Qt, quando conhecido
 
     @property
     def scale(self) -> float:
+        if self.dpr:
+            return self.dpr
         return self.image.width / self.width if self.width else 1.0
 
 
@@ -48,7 +51,8 @@ def _grab_screens() -> list[Monitor]:
         pixmap = screen.grabWindow(0)
         if pixmap.isNull():
             raise CaptureError(f"Não foi possível capturar o monitor {i}")
-        monitors.append(Monitor(i, g.x(), g.y(), g.width(), g.height(), qimage_to_pil(pixmap.toImage())))
+        image = qimage_to_pil(pixmap.toImage())
+        monitors.append(Monitor(i, g.x(), g.y(), g.width(), g.height(), image, screen.devicePixelRatio()))
     return monitors
 
 

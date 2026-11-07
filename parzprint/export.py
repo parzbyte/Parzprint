@@ -16,8 +16,13 @@ def default_filename(now: datetime, image_format: str) -> str:
     return f"Parzprint_{now:%Y-%m-%d_%H-%M-%S}{_EXT.get(image_format, '.png')}"
 
 
-def save_image(image: Image.Image, path: Path, image_format: str) -> None:
-    """Salva no formato da extensão do arquivo; sem extensão conhecida, usa ``image_format``."""
+def save_image(image: Image.Image, path: Path, image_format: str) -> Path:
+    """Salva no formato da extensão do arquivo; sem extensão conhecida, usa ``image_format``.
+
+    Sem extensão nenhuma, acrescenta a do formato. Devolve o caminho realmente gravado.
+    """
+    if not path.suffix:
+        path = path.with_suffix(_EXT.get(image_format, ".png"))
     ext = path.suffix.lower()
     fmt = "JPG" if ext in (".jpg", ".jpeg") else "PNG" if ext == ".png" else image_format
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -25,6 +30,7 @@ def save_image(image: Image.Image, path: Path, image_format: str) -> None:
         image.convert("RGB").save(path, "JPEG", quality=92)
     else:
         image.save(path, "PNG")
+    return path
 
 
 def copy_image(image: Image.Image) -> None:

@@ -62,3 +62,9 @@ def test_grab_all_empty_raises(monkeypatch):
     monkeypatch.setattr(cap, "_grab_screens", lambda: [])
     with pytest.raises(CaptureError):
         grab_all()
+
+
+def test_scale_uses_device_pixel_ratio_when_known():
+    m = Monitor(1, 0, 0, 1707, 960, _img(2560, 1440), dpr=1.5)
+    assert m.scale == 1.5
+    assert Monitor(1, 0, 0, 100, 100, _img(200, 200)).scale == 2.0

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 
 from PIL import Image, ImageColor, ImageDraw, ImageFont
@@ -85,8 +85,24 @@ class AnnotationStack:
     def items(self) -> list[Annotation]:
         return list(self._items)
 
+    def translate(self, dx: float, dy: float) -> None:
+        """Desloca todas as anotações (usado quando a origem do recorte muda)."""
+        self._items = [translated(a, dx, dy) for a in self._items]
+
     def __len__(self) -> int:
         return len(self._items)
+
+
+def _shift(p: Point, dx: float, dy: float) -> Point:
+    return Point(p.x + dx, p.y + dy)
+
+
+def translated(a: Annotation, dx: float, dy: float) -> Annotation:
+    if isinstance(a, (Pencil, Marker)):
+        return replace(a, points=[_shift(p, dx, dy) for p in a.points])
+    if isinstance(a, Text):
+        return replace(a, position=_shift(a.position, dx, dy))
+    return replace(a, start=_shift(a.start, dx, dy), end=_shift(a.end, dx, dy))
 
 
 _FONT_CANDIDATES = (

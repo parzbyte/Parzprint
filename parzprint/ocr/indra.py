@@ -47,7 +47,9 @@ class IndraEngine:
             return self._converter
 
     def _run_model(self, gray: np.ndarray) -> Any:
-        return self._load().ocr(gray)
+        # Capturas de tela estão sempre de pé: sem o modelo de orientação, que poderia
+        # girar a página e devolver as caixas num referencial girado.
+        return self._load().ocr(gray, turn=False)
 
     def _to_blocks(self, page: Any, width: int, height: int) -> list[TextBlock]:
         blocks = []

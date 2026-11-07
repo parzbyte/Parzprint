@@ -29,3 +29,9 @@ def test_save_uses_extension_over_setting(tmp_path):
 def test_save_creates_missing_folder(tmp_path):
     save_image(Image.new("RGB", (2, 2)), tmp_path / "novo" / "c.png", "PNG")
     assert (tmp_path / "novo" / "c.png").exists()
+
+
+def test_save_appends_extension_when_missing(tmp_path):
+    saved = save_image(Image.new("RGB", (2, 2)), tmp_path / "foto", "JPG")
+    assert saved == tmp_path / "foto.jpg"
+    assert Image.open(saved).format == "JPEG"

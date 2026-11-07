@@ -97,3 +97,17 @@ def test_is_model_cached_uses_indra_file_patterns(monkeypatch):
     assert is_model_cached()
     assert seen["local_files_only"] is True
     assert "*.onnx" in seen["allow_patterns"]
+
+
+def test_indra_runs_upright_only(monkeypatch):
+    eng = IndraEngine()
+    seen = {}
+
+    class FakeConv:
+        def ocr(self, gray, turn=True):
+            seen["turn"] = turn
+            return _page()
+
+    monkeypatch.setattr(eng, "_load", lambda: FakeConv())
+    eng.recognize(Image.new("RGB", (10, 10)))
+    assert seen["turn"] is False
