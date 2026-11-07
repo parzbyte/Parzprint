@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parzprint"
+version = "0.1.0"
+description = "Captura de tela com anotações e extração de texto local (OCR)"
+requires-python = ">=3.11"
+dependencies = [
+  "PySide6",
+  "mss",
+  "pynput",
+  "platformdirs",
+  "Pillow",
+  "numpy",
+  "indra-ocr",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pyinstaller"]
+
+[project.scripts]
+parzprint = "parzprint.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["parzprint*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
