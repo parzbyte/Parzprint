@@ -208,6 +208,14 @@ instalar `indra-ocr` neste Windows e rodar em um print em português. Se funcion
 segue o plano. Se não, o adaptador `ocr/indra.py` é substituído por um de Tesseract
 ou do OCR nativo do Windows, e nada mais muda.
 
+Verificado em 2026-11-07: Indra 1.1.2 funciona no Windows 11 com Python 3.12.
+Primeira carga 49 s (download de 76 MB do modelo), depois 0,06 s por imagem;
+acentos corretos em português ("Ação rápida: João comprou 3 pães às 10h.", confiança 0,99).
+API usada: `indra_ocr.load(threads=4, mode="ocr")` devolve um `Converter`;
+`conv.ocr(array_cinza_uint8)` devolve uma `Page` com `lines`, cada `Line(box, text, conf)`
+com `box = [x0, y0, x1, y1]` em pixels float. Pacote importável: `indra_ocr`.
+Modelo em cache do huggingface_hub; com cache, não acessa a rede.
+
 Segundo risco: Wayland. Tratado na seção 7 com o comando `--capture`.
 
 ## 12. Empacotamento
