@@ -9,7 +9,6 @@ description = "Captura de tela com anotações e extração de texto local (OCR)
 requires-python = ">=3.11"
 dependencies = [
   "PySide6",
-  "mss",
   "pynput",
   "platformdirs",
   "Pillow",
