@@ -76,3 +76,24 @@ def test_indra_wraps_library_errors(monkeypatch):
     monkeypatch.setattr(eng, "_run_model", boom)
     with pytest.raises(OcrError, match="falhou"):
         eng.recognize(Image.new("RGB", (5, 5)))
+
+
+def test_get_engine_reuses_instance():
+    assert get_engine("indra") is get_engine("indra")
+
+
+def test_is_model_cached_uses_indra_file_patterns(monkeypatch):
+    import huggingface_hub
+
+    from parzprint.ocr.indra import is_model_cached
+
+    seen = {}
+
+    def fake(repo, **kw):
+        seen.update(kw)
+        return "/x"
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake)
+    assert is_model_cached()
+    assert seen["local_files_only"] is True
+    assert "*.onnx" in seen["allow_patterns"]

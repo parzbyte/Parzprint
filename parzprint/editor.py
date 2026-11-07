@@ -10,30 +10,44 @@ from __future__ import annotations
 from datetime import datetime
 
 from PIL import Image
-from PySide6.QtCore import QObject, QPoint, QPointF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QKeySequence, QPainter
+from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import QLineEdit, QMessageBox
 
 from .annotations import (
     DEFAULT_COLOR, AnnotationStack, Arrow, Line, Marker, Pencil, Point, Rect, Text, render,
 )
 from .capture import crop
-from .export import ask_save_path, copy_image, print_image, save_image
-from .geometry import place_toolbars
+from .export import ask_save_path, copy_image, copy_text, print_image, save_image
+from .geometry import place_panel, place_toolbars
+from .ocr import OcrEngine, get_engine
+from .ocr_worker import OcrWorker, progress_label
 from .qtutil import pil_to_qpixmap
 from .settings import Settings
+from .textpanel import TextPanel, TextSelectionModel
 from .toolbar import BottomToolbar, SideToolbar, Tool
 
 TEXT_SIZE = 20
+PANEL_SIZE = QSize(420, 440)
+BOX_FILL = QColor(30, 136, 229, 64)
+BOX_SELECTED = QColor(30, 136, 229, 128)
+BOX_HOVER = QColor("#1E88E5")
 
 
 class Editor(QObject):
     closed = Signal()
 
-    def __init__(self, overlay, settings: Settings | None = None):
+    def __init__(self, overlay, settings: Settings | None = None, engine_provider=None):
         super().__init__(overlay)
         self.ov = overlay
         self.settings = settings or Settings()
+        self._engine_provider = engine_provider or (lambda: get_engine(self.settings.ocr_engine))
+        self._ocr_blocks: list | None = None
+        self._model: TextSelectionModel | None = None
+        self.panel: TextPanel | None = None
+        self._hover: int | None = None
+        self._drag_start: Point | None = None
+        self._ocr_running = False
         self.stack = AnnotationStack()
         self.tool: Tool | None = None
         self.color = DEFAULT_COLOR
@@ -52,6 +66,7 @@ class Editor(QObject):
         self.bottom.save_requested.connect(self.save)
         self.bottom.copy_requested.connect(self.copy)
         self.bottom.print_requested.connect(self.print_)
+        self.bottom.text_requested.connect(self.request_text)
         overlay.selection_changed.connect(self._on_selection_changed)
         overlay.editor = self
         self.side.show()
@@ -70,8 +85,12 @@ class Editor(QObject):
     def _set_color(self, color: str) -> None:
         self.color = color
 
+    @property
+    def text_mode(self) -> bool:
+        return self.panel is not None and self.panel.isVisible()
+
     def blocks_selection_change(self) -> bool:
-        return False
+        return self.text_mode or self._ocr_running
 
     def reposition(self) -> None:
         self.side.adjustSize()
@@ -79,11 +98,18 @@ class Editor(QObject):
         side, bottom = place_toolbars(self.ov.sel, self.ov.screen_rect(), self.side.size(), self.bottom.size())
         self.side.move(side)
         self.bottom.move(bottom)
+        if self.panel is not None:
+            screen = self.ov.screen_rect()
+            size = QSize(PANEL_SIZE.width(), min(PANEL_SIZE.height(), screen.height() - 20))
+            self.panel.resize(size)
+            self.panel.move(place_panel(self.ov.sel, screen, size, self.side.geometry()))
 
     def _on_selection_changed(self, _rect) -> None:
         self._finish_text()
         self._base = None
         self._committed = None
+        self._ocr_blocks = None
+        self._model = None
         self.reposition()
 
     # ---------- imagens ----------
@@ -109,7 +135,23 @@ class Editor(QObject):
         self.paint_extra(p)
 
     def paint_extra(self, p: QPainter) -> None:
-        """Ganchos de pintura por cima da imagem (painel de texto)."""
+        """Caixas dos blocos de texto por cima da imagem, quando o painel está aberto."""
+        if not self.text_mode or self._model is None:
+            return
+        selected = set(self._model.selected_indices())
+        for i in range(len(self._model.blocks)):
+            r = self.block_rect(i)
+            p.fillRect(r, BOX_SELECTED if i in selected else BOX_FILL)
+            if i == self._hover:
+                p.setPen(QPen(BOX_HOVER, 2))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawRect(r)
+
+    def block_rect(self, i: int) -> QRect:
+        b = self._model.blocks[i]
+        tl = self.to_local(Point(b.x, b.y))
+        br = self.to_local(Point(b.x + b.width, b.y + b.height))
+        return QRect(tl, br).adjusted(-1, -1, 1, 1)
 
     # ---------- coordenadas ----------
     def to_image(self, pos: QPointF) -> Point:
@@ -122,11 +164,17 @@ class Editor(QObject):
 
     # ---------- mouse ----------
     def cursor_for(self, p: QPoint):
+        if self.text_mode:
+            return Qt.CursorShape.IBeamCursor if self.ov.sel.contains(p) else Qt.CursorShape.ArrowCursor
         if self.tool is not None and self.ov.sel.contains(p):
             return Qt.CursorShape.IBeamCursor if self.tool is Tool.TEXT else Qt.CursorShape.CrossCursor
         return None
 
     def press(self, pos: QPointF) -> bool:
+        if self.text_mode:
+            if self.ov.sel.contains(pos.toPoint()):
+                self._drag_start = self.to_image(pos)
+            return True
         if self.tool is None or not self.ov.sel.contains(pos.toPoint()):
             return False
         self._finish_text()
@@ -148,6 +196,9 @@ class Editor(QObject):
         return True
 
     def move(self, pos: QPointF) -> bool:
+        if self.text_mode:
+            self._text_mode_move(pos)
+            return True
         if self._current is None:
             return False
         pt = self._clamped(self.to_image(pos))
@@ -163,6 +214,9 @@ class Editor(QObject):
         return Point(min(max(pt.x, 0), img.width - 1), min(max(pt.y, 0), img.height - 1))
 
     def release(self, pos: QPointF) -> None:
+        if self.text_mode:
+            self._text_mode_release(pos)
+            return
         if self._current is None:
             return
         self.move(pos)
@@ -215,7 +269,9 @@ class Editor(QObject):
 
     # ---------- teclado ----------
     def key(self, e) -> bool:
-        if e.matches(QKeySequence.StandardKey.Undo):
+        if self.text_mode and e.matches(QKeySequence.StandardKey.Copy) and self._model.selected_indices():
+            self._copy_selected_text()
+        elif e.matches(QKeySequence.StandardKey.Undo):
             self.undo()
         elif e.matches(QKeySequence.StandardKey.Copy):
             self.copy()
@@ -226,6 +282,118 @@ class Editor(QObject):
         else:
             return False
         return True
+
+    # ---------- texto (OCR) ----------
+    def request_text(self) -> None:
+        self._finish_text()
+        if self._ocr_running:
+            return
+        self._ensure_panel()
+        if self._ocr_blocks is not None:
+            self._open_panel()
+            return
+        try:
+            engine: OcrEngine = self._engine_provider()
+        except Exception as e:  # noqa: BLE001
+            self._open_panel()
+            self.panel.show_error(str(e))
+            return
+        label = progress_label(engine)
+        self._ocr_running = True
+        self.bottom.set_busy(True, label)
+        self.reposition()
+        worker = OcrWorker(engine, self.base_image())
+        worker.finished_ok.connect(self._on_ocr_done)
+        worker.failed.connect(self._on_ocr_failed)
+        worker.start()
+
+    def _ensure_panel(self) -> None:
+        if self.panel is not None:
+            return
+        self.panel = TextPanel(self.ov)
+        self.panel.hide()
+        self.panel.hover_block.connect(self._on_panel_hover)
+        self.panel.copy_all.connect(copy_text)
+        self.panel.copy_selection.connect(self._copy_selected_text)
+        self.panel.closed.connect(self.close_panel)
+        self.panel.retry.connect(self._retry)
+
+    def _open_panel(self) -> None:
+        self.tool = None
+        self.side.set_tool(None)
+        self.side.set_tools_enabled(False)
+        self._model = TextSelectionModel(self._ocr_blocks or [])
+        self._hover = None
+        self.panel.show_blocks(self._ocr_blocks or [])
+        self.panel.show()
+        self.panel.raise_()
+        self.reposition()
+        self.ov.update()
+
+    def _on_ocr_done(self, blocks: list) -> None:
+        self._ocr_running = False
+        self.bottom.set_busy(False)
+        self._ocr_blocks = blocks
+        self._open_panel()
+
+    def _on_ocr_failed(self, message: str) -> None:
+        self._ocr_running = False
+        self.bottom.set_busy(False)
+        self._ocr_blocks = None
+        self._open_panel()
+        self.panel.show_error(message)
+
+    def _retry(self) -> None:
+        self.close_panel()
+        self.request_text()
+
+    def close_panel(self) -> None:
+        if self.panel is not None:
+            self.panel.hide()
+        self._hover = None
+        self._drag_start = None
+        self.side.set_tools_enabled(True)
+        self.ov.setFocus()
+        self.ov.update()
+
+    def _on_panel_hover(self, i) -> None:
+        if self._model is None or (i is not None and not 0 <= i < len(self._model.blocks)):
+            i = None
+        if i != self._hover:
+            self._hover = i
+            self.ov.update()
+
+    def _text_mode_move(self, pos: QPointF) -> None:
+        if self._model is None:
+            return
+        pt = self.to_image(pos)
+        if self._drag_start is not None:
+            a = self._drag_start
+            self._model.select_range_by_drag((round(a.x), round(a.y), round(pt.x - a.x), round(pt.y - a.y)))
+            self.panel.set_selection_count(len(self._model.selected_indices()))
+        hit = self._model.hit(round(pt.x), round(pt.y)) if self.ov.sel.contains(pos.toPoint()) else None
+        if hit != self._hover:
+            self._hover = hit
+            self.panel.highlight_block(hit)
+        self.ov.update()
+
+    def _text_mode_release(self, pos: QPointF) -> None:
+        if self._model is None or self._drag_start is None:
+            return
+        a, self._drag_start = self._drag_start, None
+        pt = self.to_image(pos)
+        if abs(pt.x - a.x) < 3 * self.scale and abs(pt.y - a.y) < 3 * self.scale:
+            hit = self._model.hit(round(pt.x), round(pt.y))
+            if hit is None:
+                self._model.clear()
+            else:
+                self._model.select_only(hit)
+        self.panel.set_selection_count(len(self._model.selected_indices()))
+        self.ov.update()
+
+    def _copy_selected_text(self) -> None:
+        if self._model is not None and self._model.selected_indices():
+            copy_text(self._model.selected_text())
 
     # ---------- ações ----------
     def save(self) -> bool:

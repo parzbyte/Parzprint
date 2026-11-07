@@ -15,9 +15,16 @@ def is_model_cached() -> bool:
     """True se o modelo do Indra já está no cache local (nenhum download será feito)."""
     try:
         from huggingface_hub import snapshot_download
-        from indra_ocr.models import HF_REPO, HF_REVISION
+        from indra_ocr.models import HF_REPO, HF_REVISION, MATH_FILES
 
-        snapshot_download(HF_REPO, revision=HF_REVISION, local_files_only=True)
+        # Mesmos filtros que indra_ocr.models.model_dir usa: só os arquivos do modelo.
+        snapshot_download(
+            HF_REPO,
+            revision=HF_REVISION,
+            local_files_only=True,
+            allow_patterns=["*.onnx", "meta.json", "lm.npz", "lm_*.npz"],
+            ignore_patterns=list(MATH_FILES),
+        )
         return True
     except Exception:  # noqa: BLE001
         return False
