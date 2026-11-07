@@ -7,17 +7,21 @@ anotações acompanham a seleção se ela for movida.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from PIL import Image
 from PySide6.QtCore import QObject, QPoint, QPointF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QKeySequence, QPainter
-from PySide6.QtWidgets import QLineEdit
+from PySide6.QtWidgets import QLineEdit, QMessageBox
 
 from .annotations import (
     DEFAULT_COLOR, AnnotationStack, Arrow, Line, Marker, Pencil, Point, Rect, Text, render,
 )
 from .capture import crop
+from .export import ask_save_path, copy_image, print_image, save_image
 from .geometry import place_toolbars
 from .qtutil import pil_to_qpixmap
+from .settings import Settings
 from .toolbar import BottomToolbar, SideToolbar, Tool
 
 TEXT_SIZE = 20
@@ -26,9 +30,10 @@ TEXT_SIZE = 20
 class Editor(QObject):
     closed = Signal()
 
-    def __init__(self, overlay):
+    def __init__(self, overlay, settings: Settings | None = None):
         super().__init__(overlay)
         self.ov = overlay
+        self.settings = settings or Settings()
         self.stack = AnnotationStack()
         self.tool: Tool | None = None
         self.color = DEFAULT_COLOR
@@ -44,6 +49,9 @@ class Editor(QObject):
         self.side.color_changed.connect(self._set_color)
         self.side.undo_requested.connect(self.undo)
         self.bottom.close_requested.connect(self.close)
+        self.bottom.save_requested.connect(self.save)
+        self.bottom.copy_requested.connect(self.copy)
+        self.bottom.print_requested.connect(self.print_)
         overlay.selection_changed.connect(self._on_selection_changed)
         overlay.editor = self
         self.side.show()
@@ -209,8 +217,40 @@ class Editor(QObject):
     def key(self, e) -> bool:
         if e.matches(QKeySequence.StandardKey.Undo):
             self.undo()
-            return True
-        return False
+        elif e.matches(QKeySequence.StandardKey.Copy):
+            self.copy()
+        elif e.matches(QKeySequence.StandardKey.Save):
+            self.save()
+        elif e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and e.modifiers() == Qt.KeyboardModifier.NoModifier:
+            self.copy()
+        else:
+            return False
+        return True
+
+    # ---------- ações ----------
+    def save(self) -> bool:
+        self._finish_text()
+        path = ask_save_path(self.ov, self.settings, datetime.now())
+        if path is None:
+            return False
+        try:
+            save_image(self.composite(), path, self.settings.image_format)
+        except OSError as e:
+            QMessageBox.critical(self.ov, "Parzprint", f"Não foi possível salvar em\n{path}\n\n{e}")
+            return False
+        self.close()
+        return True
+
+    def copy(self) -> None:
+        self._finish_text()
+        copy_image(self.composite())
+        self.close()
+
+    def print_(self) -> None:
+        self._finish_text()
+        print_image(self.composite(), self.ov)
+        self.ov.activateWindow()
+        self.ov.setFocus()
 
     # ---------- fim ----------
     def close(self) -> None:
