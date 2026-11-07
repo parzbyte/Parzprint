@@ -18,6 +18,8 @@ _SPECIAL = {
     "End": "end",
     "Insert": "insert",
     "Delete": "delete",
+    "Del": "delete",
+    "Ins": "insert",
     "PgUp": "page_up",
     "PgDown": "page_down",
     "Pause": "pause",
@@ -69,8 +71,19 @@ class GlobalHotkey:
         from pynput import keyboard
 
         combo = to_pynput(self.hotkey)
+        # Listener + HotKey em vez de GlobalHotKeys: no Windows o GlobalHotKeys do
+        # pynput 1.8 descarta teclas injetadas (de outros apps, macros e testes).
         try:
-            listener = keyboard.GlobalHotKeys({combo: self._callback})
+            hotkey = keyboard.HotKey(keyboard.HotKey.parse(combo), self._callback)
+            listener: keyboard.Listener
+
+            def on_press(key, injected=False):
+                hotkey.press(listener.canonical(key))
+
+            def on_release(key, injected=False):
+                hotkey.release(listener.canonical(key))
+
+            listener = keyboard.Listener(on_press=on_press, on_release=on_release)
             listener.daemon = True
             listener.start()
         except Exception as e:  # noqa: BLE001

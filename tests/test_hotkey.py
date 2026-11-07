@@ -1,4 +1,6 @@
+import os
 import sys
+import time
 
 import pytest
 
@@ -48,3 +50,30 @@ def test_global_hotkey_start_stop_rebind():
 def test_global_hotkey_rejects_invalid():
     with pytest.raises(HotkeyError):
         GlobalHotkey("Ctrl+", lambda: None).start()
+
+
+def test_to_pynput_qt_key_names():
+    assert to_pynput("Ctrl+Del") == "<ctrl>+<delete>"
+    assert to_pynput("Ctrl+Ins") == "<ctrl>+<insert>"
+    assert to_pynput("Alt+PgDown") == "<alt>+<page_down>"
+
+
+@pytest.mark.skipif(not os.environ.get("PARZPRINT_KEYBOARD_TESTS"), reason="pressiona teclas reais no sistema")
+def test_global_hotkey_fires_on_keys():
+    import threading
+
+    from pynput.keyboard import Controller, Key
+
+    fired = threading.Event()
+    hk = GlobalHotkey("Ctrl+Alt+F11", fired.set)
+    hk.start()
+    try:
+        time.sleep(0.3)
+        k = Controller()
+        for x in (Key.ctrl, Key.alt, Key.f11):
+            k.press(x)
+        for x in (Key.f11, Key.alt, Key.ctrl):
+            k.release(x)
+        assert fired.wait(3)
+    finally:
+        hk.stop()
