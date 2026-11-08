@@ -28,6 +28,21 @@ def parse_args(argv: list[str]) -> str:
     return "none"
 
 
+def _allow_foreground() -> None:
+    """No Windows, deixa a instância aberta trazer a própria janela para a frente.
+
+    Sem isso o Windows impede que um programa em segundo plano tome o foco, e a janela
+    de configurações aberta por ``parzprint --settings`` ficaria atrás das outras.
+    """
+    import sys
+
+    if sys.platform == "win32":
+        import ctypes
+
+        ASFW_ANY = -1
+        ctypes.windll.user32.AllowSetForegroundWindow(ASFW_ANY)
+
+
 class SingleInstance(QObject):
     message_received = Signal(str)
 
@@ -65,6 +80,7 @@ class SingleInstance(QObject):
                 self.message_received.emit(msg)
 
     def send(self, message: str) -> bool:
+        _allow_foreground()
         sock = QLocalSocket()
         sock.connectToServer(self.name)
         if not sock.waitForConnected(TIMEOUT_MS):
