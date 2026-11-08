@@ -16,6 +16,8 @@ SEP = os.pathsep  # ";" no Windows, ":" no Linux
 
 
 def main() -> None:
+    # python build.py [pasta-de-saida]   (padrão: dist/)
+    extra = ["--distpath", sys.argv[1], "--workpath", str(Path(sys.argv[1]) / "build")] if len(sys.argv) > 1 else []
     args = [
         str(ROOT / "run_parzprint.py"),
         "--name", "Parzprint",
@@ -31,6 +33,7 @@ def main() -> None:
         "--exclude-module", "PySide6.QtWebEngineWidgets",
         "--exclude-module", "PySide6.Qt3DCore",
         "--exclude-module", "tkinter",
+        *extra,
     ]
     if sys.platform == "win32":
         args += ["--icon", str(ROOT / "parzprint" / "assets" / "icon.ico")]

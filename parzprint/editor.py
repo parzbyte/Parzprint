@@ -10,9 +10,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from PIL import Image
-from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QKeySequence, QPainter, QPen
-from PySide6.QtWidgets import QLineEdit, QMessageBox
+from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QKeySequence, QPainter, QPen, QRegion
+from PySide6.QtWidgets import QLineEdit, QMessageBox, QPushButton
 
 from .annotations import (
     DEFAULT_COLOR, AnnotationStack, Arrow, Line, Marker, Pencil, Point, Rect, Text, paint_annotation, render,
@@ -24,7 +24,7 @@ from .ocr import OcrEngine, get_engine
 from .ocr_worker import OcrWorker, progress_label
 from .qtutil import pil_to_qpixmap
 from .settings import Settings
-from .textpanel import TextPanel, TextSelectionModel
+from .textpanel import TextLayout, TextPanel
 from .toolbar import BottomToolbar, SideToolbar, Tool
 
 TEXT_SIZE = 20
@@ -36,9 +36,13 @@ SIZE_LIMITS = {Tool.MARKER: (6, 60), Tool.TEXT: (10, 72)}  # demais: 1 a 30
 SIZE_STEPS = {Tool.MARKER: 2, Tool.TEXT: 2}  # demais: 1
 HUD_MS = 900
 PANEL_SIZE = QSize(420, 440)
-BOX_FILL = QColor(30, 136, 229, 64)
-BOX_SELECTED = QColor(30, 136, 229, 128)
-BOX_HOVER = QColor("#1E88E5")
+LENS_DIM = QColor(0, 0, 0, 110)  # escurece a imagem fora do texto, como no Google Lens
+LENS_SELECTION = QColor(30, 136, 229, 120)
+CHIP_STYLE = """
+QPushButton { background: #1E88E5; color: white; border: none; border-radius: 15px;
+              padding: 6px 16px; font-weight: bold; }
+QPushButton:hover { background: #2196F3; }
+"""
 
 
 class _TextInput(QLineEdit):
@@ -69,10 +73,9 @@ class Editor(QObject):
         self.settings = settings or Settings()
         self._engine_provider = engine_provider or (lambda: get_engine(self.settings.ocr_engine))
         self._ocr_blocks: list | None = None
-        self._model: TextSelectionModel | None = None
+        self.layout: TextLayout | None = None
+        self._anchor: int | None = None
         self.panel: TextPanel | None = None
-        self._hover: int | None = None
-        self._drag_start: Point | None = None
         self._ocr_running = False
         self.stack = AnnotationStack()
         self.tool: Tool | None = None
@@ -154,7 +157,7 @@ class Editor(QObject):
         self._base = None
         self._committed = None
         self._ocr_blocks = None
-        self._model = None
+        self.layout = None
         self.reposition()
 
     # ---------- imagens ----------
@@ -242,23 +245,26 @@ class Editor(QObject):
         p.restore()
 
     def paint_extra(self, p: QPainter) -> None:
-        """Caixas dos blocos de texto por cima da imagem, quando o painel está aberto."""
-        if not self.text_mode or self._model is None:
+        """Modo texto: imagem levemente escurecida fora das linhas e a seleção em azul."""
+        if not self.text_mode or self.layout is None:
             return
-        selected = set(self._model.selected_indices())
-        for i in range(len(self._model.blocks)):
-            r = self.block_rect(i)
-            p.fillRect(r, BOX_SELECTED if i in selected else BOX_FILL)
-            if i == self._hover:
-                p.setPen(QPen(BOX_HOVER, 2))
-                p.setBrush(Qt.BrushStyle.NoBrush)
-                p.drawRect(r)
+        p.save()
+        p.setClipRect(self.ov.sel)
+        dim = QRegion(self.ov.sel)
+        for b in self.layout.blocks:
+            dim = dim.subtracted(QRegion(self._local_rect(b.x - 2, b.y - 2, b.x + b.width + 2, b.y + b.height + 2)))
+        p.setClipRegion(dim)
+        p.fillRect(self.ov.sel, LENS_DIM)
+        p.setClipRect(self.ov.sel)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(LENS_SELECTION)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for x0, y0, x1, y1 in self.layout.selection_rects():
+            p.drawRoundedRect(QRectF(self._local_rect(x0, y0 - 1, x1, y1 + 1)), 3, 3)
+        p.restore()
 
-    def block_rect(self, i: int) -> QRect:
-        b = self._model.blocks[i]
-        tl = self.to_local(Point(b.x, b.y))
-        br = self.to_local(Point(b.x + b.width, b.y + b.height))
-        return QRect(tl, br).adjusted(-1, -1, 1, 1)
+    def _local_rect(self, x0: float, y0: float, x1: float, y1: float) -> QRect:
+        return QRect(self.to_local(Point(x0, y0)), self.to_local(Point(x1, y1)))
 
     # ---------- coordenadas ----------
     def to_image(self, pos: QPointF) -> Point:
@@ -272,15 +278,24 @@ class Editor(QObject):
     # ---------- mouse ----------
     def cursor_for(self, p: QPoint):
         if self.text_mode:
-            return Qt.CursorShape.IBeamCursor if self.ov.sel.contains(p) else Qt.CursorShape.ArrowCursor
+            if self.layout is not None and self.ov.sel.contains(p):
+                pt = self.to_image(QPointF(p))
+                if self.layout.is_over_text(pt.x, pt.y):
+                    return Qt.CursorShape.IBeamCursor
+            return Qt.CursorShape.ArrowCursor
         if self.tool is not None and self.ov.sel.contains(p):
             return Qt.CursorShape.IBeamCursor if self.tool is Tool.TEXT else Qt.CursorShape.CrossCursor
         return None
 
     def press(self, pos: QPointF) -> bool:
         if self.text_mode:
-            if self.ov.sel.contains(pos.toPoint()):
-                self._drag_start = self.to_image(pos)
+            if self.layout is not None and self.ov.sel.contains(pos.toPoint()):
+                pt = self.to_image(pos)
+                self._anchor = self.layout.position_at(pt.x, pt.y)
+                self.layout.select(self._anchor, self._anchor)
+                self.copy_chip.hide()
+                self._sync_panel()
+                self.ov.update()
             return True
         if self.tool is None or not self.ov.sel.contains(pos.toPoint()):
             return False
@@ -398,6 +413,9 @@ class Editor(QObject):
         if self.text_mode and e.matches(QKeySequence.StandardKey.Copy):
             # com o painel aberto, Ctrl+C é sobre texto; sem seleção não faz nada
             self._copy_selected_text()
+        elif self.text_mode and e.matches(QKeySequence.StandardKey.SelectAll):
+            self.layout.select_all()
+            self._after_selection()
         elif e.matches(QKeySequence.StandardKey.Undo):
             self.undo()
         elif e.matches(QKeySequence.StandardKey.Copy):
@@ -439,19 +457,32 @@ class Editor(QObject):
             return
         self.panel = TextPanel(self.ov)
         self.panel.hide()
-        self.panel.hover_block.connect(self._on_panel_hover)
         self.panel.copy_all.connect(copy_text)
-        self.panel.copy_selection.connect(self._copy_selected_text)
+        self.panel.copy_selection.connect(copy_text)
         self.panel.closed.connect(self.close_panel)
         self.panel.retry.connect(self._retry)
+        self.panel.selection_changed.connect(self._on_panel_selection)
+        self.copy_chip = QPushButton("Copiar", self.ov)
+        self.copy_chip.setStyleSheet(CHIP_STYLE)
+        self.copy_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.copy_chip.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.copy_chip.clicked.connect(self._chip_copy)
+        self.copy_chip.hide()
+
+    def _measure(self):
+        from PySide6.QtGui import QFont, QFontMetricsF
+
+        fm = QFontMetricsF(QFont())
+        return fm.horizontalAdvance
 
     def _open_panel(self) -> None:
         self.tool = None
         self.side.set_tool(None)
         self.side.set_tools_enabled(False)
-        self._model = TextSelectionModel(self._ocr_blocks or [])
-        self._hover = None
-        self.panel.show_blocks(self._ocr_blocks or [])
+        self.layout = TextLayout(self._ocr_blocks or [], measure=self._measure())
+        self._anchor = None
+        self.copy_chip.hide()
+        self.panel.show_text(self.layout.text)
         self.panel.show()
         self.panel.raise_()
         self.reposition()
@@ -477,50 +508,77 @@ class Editor(QObject):
     def close_panel(self) -> None:
         if self.panel is not None:
             self.panel.hide()
-        self._hover = None
-        self._drag_start = None
+            self.copy_chip.hide()
+        self._anchor = None
         self.side.set_tools_enabled(True)
         self.ov.setFocus()
         self.ov.update()
 
-    def _on_panel_hover(self, i) -> None:
-        if self._model is None or (i is not None and not 0 <= i < len(self._model.blocks)):
-            i = None
-        if i != self._hover:
-            self._hover = i
-            self.ov.update()
+    def _sync_panel(self) -> None:
+        if self.panel is not None and self.layout is not None:
+            self.panel.set_selection(*self.layout.selection)
+
+    def _on_panel_selection(self, a: int, b: int) -> None:
+        if self.layout is None:
+            return
+        self.layout.select(a, b)
+        self.copy_chip.hide()
+        self.ov.update()
 
     def _text_mode_move(self, pos: QPointF) -> None:
-        if self._model is None:
+        if self.layout is None or self._anchor is None:
             return
         pt = self.to_image(pos)
-        if self._drag_start is not None:
-            a = self._drag_start
-            self._model.select_range_by_drag((round(a.x), round(a.y), round(pt.x - a.x), round(pt.y - a.y)))
-            self.panel.set_selection_count(len(self._model.selected_indices()))
-        hit = self._model.hit(round(pt.x), round(pt.y)) if self.ov.sel.contains(pos.toPoint()) else None
-        if hit != self._hover:
-            self._hover = hit
-            self.panel.highlight_block(hit)
+        self.layout.select(self._anchor, self.layout.position_at(pt.x, pt.y))
+        self._sync_panel()
         self.ov.update()
 
     def _text_mode_release(self, pos: QPointF) -> None:
-        if self._model is None or self._drag_start is None:
+        if self.layout is None or self._anchor is None:
             return
-        a, self._drag_start = self._drag_start, None
+        self._text_mode_move(pos)
+        self._anchor = None
+        self._after_selection()
+
+    def double_click(self, pos: QPointF) -> bool:
+        if not self.text_mode or self.layout is None or not self.ov.sel.contains(pos.toPoint()):
+            return False
         pt = self.to_image(pos)
-        if abs(pt.x - a.x) < 3 * self.scale and abs(pt.y - a.y) < 3 * self.scale:
-            hit = self._model.hit(round(pt.x), round(pt.y))
-            if hit is None:
-                self._model.clear()
-            else:
-                self._model.select_only(hit)
-        self.panel.set_selection_count(len(self._model.selected_indices()))
+        a, b = self.layout.word_at(self.layout.position_at(pt.x, pt.y))
+        self.layout.select(a, b)
+        self._anchor = None
+        self._after_selection()
+        return True
+
+    def _after_selection(self) -> None:
+        self._sync_panel()
+        rects = self.layout.selection_rects()
+        if rects:
+            x0, _, x1, y1 = rects[-1]
+            r = self._local_rect(x0, y1, x1, y1)
+            self.copy_chip.setText("Copiar")
+            self.copy_chip.adjustSize()
+            x = min(max(r.right() - self.copy_chip.width(), self.ov.sel.x()), self.ov.width() - self.copy_chip.width())
+            y = r.bottom() + 8
+            if y + self.copy_chip.height() > self.ov.height():
+                top = self._local_rect(*rects[0])
+                y = top.top() - self.copy_chip.height() - 8
+            self.copy_chip.move(max(0, x), max(0, y))
+            self.copy_chip.show()
+            self.copy_chip.raise_()
+        else:
+            self.copy_chip.hide()
         self.ov.update()
 
+    def _chip_copy(self) -> None:
+        self._copy_selected_text()
+        self.copy_chip.setText("Copiado ✓")
+        self.copy_chip.adjustSize()
+        QTimer.singleShot(900, self.copy_chip.hide)
+
     def _copy_selected_text(self) -> None:
-        if self._model is not None and self._model.selected_indices():
-            copy_text(self._model.selected_text())
+        if self.layout is not None and self.layout.has_selection():
+            copy_text(self.layout.selected_text())
 
     # ---------- ações ----------
     def save(self) -> bool:

@@ -197,6 +197,15 @@ class SelectionOverlay(QWidget):
         if self.editor is not None:
             self.editor.release(e.position())
 
+    def mouseDoubleClickEvent(self, e):
+        if (
+            e.button() == Qt.MouseButton.LeftButton
+            and self.editor is not None
+            and self.editor.double_click(e.position())
+        ):
+            return
+        self.mousePressEvent(e)  # sem uso especial: vale como um clique normal
+
     def wheelEvent(self, e):
         if self.editor is not None and self.editor.wheel(e.angleDelta().y(), e.position()):
             e.accept()

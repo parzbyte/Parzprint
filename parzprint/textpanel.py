@@ -1,78 +1,153 @@
-"""Painel de texto (OCR): modelo de seleção dos blocos e a janela lateral."""
+"""Texto da imagem (OCR): o modelo de seleção contínua e o painel lateral.
+
+A seleção funciona como num editor de texto (e como no Google Lens): arrasta-se de um
+caractere a outro e o trecho entre os dois fica selecionado, mesmo no meio da linha.
+O Indra dá a caixa de cada linha; a posição de cada caractere dentro dela é estimada
+pela largura relativa das letras (``measure``).
+"""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QColor, QTextCursor, QTextFormat
-from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget,
-)
+from collections.abc import Callable
 
-from .ocr.base import TextBlock, join_text
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QTextCursor
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
+
+from .ocr.base import TextBlock
 
 EMPTY_MESSAGE = "Nenhum texto encontrado"
+HINT = "Arraste sobre o texto da imagem para selecionar. Clique duas vezes numa palavra para pegá-la."
 
 
-class TextSelectionModel:
-    """Blocos de texto (já em ordem de leitura) e quais estão selecionados. Sem Qt."""
+class TextLayout:
+    """Linhas reconhecidas, posição de cada caractere e o trecho selecionado. Sem janelas."""
 
-    def __init__(self, blocks: list[TextBlock]):
+    def __init__(self, blocks: list[TextBlock], measure: Callable[[str], float] | None = None):
         self.blocks = list(blocks)
-        self._selected: set[int] = set()
+        self.lines = [b.text for b in self.blocks]
+        self.text = "\n".join(self.lines)
+        measure = measure or len
+        self.starts: list[int] = []
+        self.edges: list[list[float]] = []
+        offset = 0
+        for b, line in zip(self.blocks, self.lines):
+            self.starts.append(offset)
+            offset += len(line) + 1
+            total = measure(line) or 1
+            k = b.width / total
+            self.edges.append([b.x + measure(line[:i]) * k for i in range(len(line) + 1)])
+        self._sel = (0, 0)
 
-    def hit(self, x: int, y: int) -> int | None:
-        for i, b in enumerate(self.blocks):
-            if b.x <= x < b.x + b.width and b.y <= y < b.y + b.height:
-                return i
-        return None
+    # ---------- posição ----------
+    def _line_at(self, x: float, y: float) -> int:
+        def distance(i: int) -> tuple[float, float]:
+            b = self.blocks[i]
+            dy = 0.0 if b.y <= y <= b.y + b.height else min(abs(y - b.y), abs(y - b.y - b.height))
+            dx = 0.0 if b.x <= x <= b.x + b.width else min(abs(x - b.x), abs(x - b.x - b.width))
+            return dy, dx
 
-    def select_only(self, i: int) -> None:
-        self._selected = {i} if 0 <= i < len(self.blocks) else set()
+        return min(range(len(self.blocks)), key=distance)
 
-    def select_range_by_drag(self, rect: tuple[int, int, int, int]) -> None:
-        x, y, w, h = rect
-        x0, x1 = sorted((x, x + w))
-        y0, y1 = sorted((y, y + h))
-        self._selected = {
-            i
-            for i, b in enumerate(self.blocks)
-            if b.x < x1 and x0 < b.x + b.width and b.y < y1 and y0 < b.y + b.height
-        }
+    def line_of(self, offset: int) -> int:
+        i = 0
+        for j, start in enumerate(self.starts):
+            if start <= offset:
+                i = j
+        return i
+
+    def position_at(self, x: float, y: float) -> int:
+        """Posição no texto (0..len) mais próxima do ponto (coordenadas da imagem)."""
+        if not self.blocks:
+            return 0
+        i = self._line_at(x, y)
+        edges = self.edges[i]
+        col = min(range(len(edges)), key=lambda c: abs(edges[c] - x))
+        return self.starts[i] + col
+
+    def is_over_text(self, x: float, y: float, pad: float = 4) -> bool:
+        return any(
+            b.x - pad <= x <= b.x + b.width + pad and b.y - pad <= y <= b.y + b.height + pad for b in self.blocks
+        )
+
+    def word_at(self, offset: int) -> tuple[int, int]:
+        t = self.text
+        if not t:
+            return 0, 0
+        offset = max(0, min(offset, len(t)))
+        if offset == len(t) or not t[offset].isalnum():
+            if offset > 0 and t[offset - 1].isalnum():
+                offset -= 1
+            else:
+                return offset, offset
+        a = b = offset
+        while a > 0 and t[a - 1].isalnum():
+            a -= 1
+        while b < len(t) and t[b].isalnum():
+            b += 1
+        return a, b
+
+    # ---------- seleção ----------
+    def select(self, anchor: int, focus: int) -> None:
+        n = len(self.text)
+        a, b = sorted((max(0, min(anchor, n)), max(0, min(focus, n))))
+        self._sel = (a, b)
+
+    def select_all(self) -> None:
+        self._sel = (0, len(self.text))
 
     def clear(self) -> None:
-        self._selected = set()
+        self._sel = (0, 0)
 
-    def selected_indices(self) -> list[int]:
-        return sorted(self._selected)
+    @property
+    def selection(self) -> tuple[int, int]:
+        return self._sel
+
+    def has_selection(self) -> bool:
+        return self._sel[1] > self._sel[0]
 
     def selected_text(self) -> str:
-        return join_text([self.blocks[i] for i in self.selected_indices()])
+        a, b = self._sel
+        return self.text[a:b]
 
-    def all_text(self) -> str:
-        return join_text(self.blocks)
+    def selection_rects(self) -> list[tuple[int, int, int, int]]:
+        """Um retângulo (x0, y0, x1, y1) por linha tocada pela seleção."""
+        a, b = self._sel
+        if b <= a:
+            return []
+        rects = []
+        for i, blk in enumerate(self.blocks):
+            start, end = self.starts[i], self.starts[i] + len(self.lines[i])
+            lo, hi = max(a, start), min(b, end)
+            if lo >= hi:
+                continue
+            x0 = self.edges[i][lo - start]
+            x1 = self.edges[i][hi - start]
+            rects.append((round(x0), blk.y, round(x1), blk.y + blk.height))
+        return rects
 
 
 PANEL_STYLE = """
-QWidget#panel { background: rgba(32, 32, 32, 245); border: 1px solid rgba(255,255,255,50); border-radius: 8px; }
-QLabel { color: #EEEEEE; }
-QLabel#title { font-weight: bold; }
-QLabel#status { color: #BBBBBB; }
-QPlainTextEdit { background: #1B1B1B; color: #F2F2F2; border: 1px solid #444; border-radius: 4px;
-                 selection-background-color: #1E88E5; font-size: 13px; }
-QPushButton { background: #2D2D2D; color: #EEEEEE; border: 1px solid #555; border-radius: 4px; padding: 5px 10px; }
-QPushButton:hover { background: #3A3A3A; }
-QPushButton:disabled { color: #777; border-color: #3A3A3A; }
-QPushButton#primary { background: #1E88E5; border-color: #1E88E5; }
+QWidget#panel { background: rgba(28, 28, 30, 246); border: 1px solid rgba(255,255,255,45); border-radius: 9px; }
+QLabel { color: #ECECEC; }
+QLabel#title { font-weight: bold; font-size: 13px; }
+QLabel#status { color: #A8A8A8; }
+QPlainTextEdit { background: #19191B; color: #F2F2F2; border: 1px solid #3A3A3C; border-radius: 6px;
+                 selection-background-color: #1E88E5; selection-color: #FFFFFF; font-size: 13px; padding: 4px; }
+QPushButton { background: #2C2C2E; color: #ECECEC; border: 1px solid #48484A; border-radius: 6px; padding: 6px 12px; }
+QPushButton:hover { background: #3A3A3C; }
+QPushButton:disabled { color: #6E6E6E; border-color: #3A3A3C; }
+QPushButton#primary { background: #1E88E5; border-color: #1E88E5; color: #FFFFFF; }
 QPushButton#primary:hover { background: #2196F3; }
 """
 
 
 class TextPanel(QWidget):
-    hover_block = Signal(object)  # int | None
     copy_all = Signal(str)
-    copy_selection = Signal()
+    copy_selection = Signal(str)
     closed = Signal()
     retry = Signal()
+    selection_changed = Signal(int, int)  # o usuário selecionou no painel (posições no texto)
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
@@ -80,8 +155,9 @@ class TextPanel(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         self.setStyleSheet(PANEL_STYLE)
         self.setCursor(Qt.CursorShape.ArrowCursor)
+        self._syncing = False
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(10, 10, 10, 10)
+        lay.setContentsMargins(12, 12, 12, 12)
         lay.setSpacing(8)
 
         head = QHBoxLayout()
@@ -101,8 +177,7 @@ class TextPanel(QWidget):
 
         self.edit = QPlainTextEdit(self)
         self.edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
-        self.edit.viewport().setMouseTracking(True)
-        self.edit.viewport().installEventFilter(self)
+        self.edit.selectionChanged.connect(self._on_edit_selection)
         lay.addWidget(self.edit, 1)
 
         row = QHBoxLayout()
@@ -110,11 +185,7 @@ class TextPanel(QWidget):
         self.copy_all_button.setObjectName("primary")
         self.copy_all_button.clicked.connect(lambda: self.copy_all.emit(self.edit.toPlainText()))
         self.copy_sel_button = QPushButton("Copiar seleção", self)
-        self.copy_sel_button.clicked.connect(self.copy_selection)
-        self.copy_sel_button.ensurePolished()
-        self.copy_sel_button.setMinimumWidth(
-            self.copy_sel_button.fontMetrics().horizontalAdvance("Copiar seleção (999)") + 28
-        )
+        self.copy_sel_button.clicked.connect(lambda: self.copy_selection.emit(self.selected_text()))
         self.retry_button = QPushButton("Tentar de novo", self)
         self.retry_button.clicked.connect(self.retry)
         row.addWidget(self.copy_all_button)
@@ -134,20 +205,16 @@ class TextPanel(QWidget):
         self.copy_sel_button.setEnabled(False)
         self.retry_button.hide()
 
-    def show_blocks(self, blocks: list[TextBlock]) -> None:
+    def show_text(self, text: str) -> None:
         self.retry_button.hide()
         self.edit.setEnabled(True)
-        if not blocks:
-            self.status.setText(EMPTY_MESSAGE)
-            self.status.show()
-            self.edit.setPlainText("")
-            self.copy_all_button.setEnabled(False)
-        else:
-            self.status.setText("Passe o mouse ou arraste sobre a imagem para escolher trechos.")
-            self.status.show()
-            self.edit.setPlainText(join_text(blocks))
-            self.copy_all_button.setEnabled(True)
-        self.set_selection_count(0)
+        self._syncing = True
+        self.edit.setPlainText(text)
+        self._syncing = False
+        self.status.setText(HINT if text else EMPTY_MESSAGE)
+        self.status.show()
+        self.copy_all_button.setEnabled(bool(text))
+        self.copy_sel_button.setEnabled(False)
 
     def show_error(self, message: str) -> None:
         self.status.setText(f"Não foi possível ler o texto: {message}")
@@ -158,28 +225,28 @@ class TextPanel(QWidget):
         self.copy_sel_button.setEnabled(False)
         self.retry_button.show()
 
-    def set_selection_count(self, n: int) -> None:
-        self.copy_sel_button.setEnabled(n > 0)
-        self.copy_sel_button.setText(f"Copiar seleção ({n})" if n else "Copiar seleção")
+    # ---------- seleção sincronizada ----------
+    def is_edited(self) -> bool:
+        return self.edit.document().isModified()
 
-    # ---------- destaque ----------
-    def highlight_block(self, i: int | None) -> None:
-        selections = []
-        if i is not None:
-            block = self.edit.document().findBlockByNumber(i)
-            if block.isValid():
-                sel = QTextEdit.ExtraSelection()
-                sel.format.setBackground(QColor(30, 136, 229, 90))
-                sel.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
-                sel.cursor = QTextCursor(block)
-                selections.append(sel)
-        self.edit.setExtraSelections(selections)
+    def set_selection(self, a: int, b: int) -> None:
+        """Espelha a seleção feita na imagem (só se o texto não foi editado)."""
+        if self.is_edited():
+            return
+        self._syncing = True
+        cursor = self.edit.textCursor()
+        cursor.setPosition(a)
+        cursor.setPosition(b, QTextCursor.MoveMode.KeepAnchor)
+        self.edit.setTextCursor(cursor)
+        self._syncing = False
+        self.copy_sel_button.setEnabled(b > a)
 
-    def eventFilter(self, obj, event):
-        if obj is self.edit.viewport():
-            if event.type() == QEvent.Type.MouseMove:
-                cursor = self.edit.cursorForPosition(event.position().toPoint())
-                self.hover_block.emit(cursor.blockNumber())
-            elif event.type() == QEvent.Type.Leave:
-                self.hover_block.emit(None)
-        return super().eventFilter(obj, event)
+    def selected_text(self) -> str:
+        return self.edit.textCursor().selectedText().replace(" ", "\n")
+
+    def _on_edit_selection(self) -> None:
+        cursor = self.edit.textCursor()
+        self.copy_sel_button.setEnabled(cursor.hasSelection())
+        if self._syncing or self.is_edited():
+            return
+        self.selection_changed.emit(cursor.selectionStart(), cursor.selectionEnd())

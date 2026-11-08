@@ -137,3 +137,71 @@ def test_wheel_resizes_text_being_typed(qapp):
     QTest.keyClick(edit, Qt.Key.Key_Return)
     assert ed.stack.items()[-1].size == ed.sizes[Tool.TEXT]
     ov.close()
+
+
+LENS_BLOCKS = [TextBlock("olá mundo", 10, 10, 90, 12), TextBlock("segunda", 10, 30, 70, 12)]
+
+
+def open_text_mode(qapp):
+    ov, ed, cancelled = make_editor(qapp)
+    ed._ocr_blocks = list(LENS_BLOCKS)
+    ed._ensure_panel()
+    ed._open_panel()
+    return ov, ed, cancelled
+
+
+def test_drag_over_image_selects_continuous_text(qapp):
+    ov, ed, _ = open_text_mode(qapp)
+    # sel começa em (50, 50): ponto da imagem (x, y) fica em (50 + x, 50 + y)
+    ed.press(QPointF(58, 66))
+    ed.move(QPointF(140, 86))
+    ed.release(QPointF(140, 86))
+    assert ed.layout.selected_text() == "olá mundo\nsegunda"
+    assert ed.panel.selected_text() == "olá mundo\nsegunda"
+    QTest.keyClick(ov, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+    from PySide6.QtWidgets import QApplication
+
+    assert QApplication.clipboard().text() == "olá mundo\nsegunda"
+    ov.close()
+
+
+def test_double_click_selects_word_and_chip_copies(qapp):
+    ov, ed, _ = open_text_mode(qapp)
+    assert ed.double_click(QPointF(146, 66))
+    assert ed.layout.selected_text() == "mundo"
+    assert ed.copy_chip.isVisible()
+    ed.copy_chip.click()
+    from PySide6.QtWidgets import QApplication
+
+    assert QApplication.clipboard().text() == "mundo"
+    ov.close()
+
+
+def test_click_without_drag_clears_selection(qapp):
+    ov, ed, _ = open_text_mode(qapp)
+    ed.layout.select_all()
+    ed.press(QPointF(70, 66))
+    ed.release(QPointF(70, 66))
+    assert not ed.layout.has_selection()
+    assert not ed.copy_chip.isVisible()
+    ov.close()
+
+
+def test_ctrl_a_selects_all_text(qapp):
+    ov, ed, _ = open_text_mode(qapp)
+    QTest.keyClick(ov, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+    assert ed.layout.selected_text() == "olá mundo\nsegunda"
+    ov.close()
+
+
+def test_selecting_in_panel_highlights_image(qapp):
+    ov, ed, _ = open_text_mode(qapp)
+    ed.panel.set_selection(0, 0)
+    from PySide6.QtGui import QTextCursor
+
+    c = ed.panel.edit.textCursor()
+    c.setPosition(4)
+    c.setPosition(9, QTextCursor.MoveMode.KeepAnchor)
+    ed.panel.edit.setTextCursor(c)
+    assert ed.layout.selection == (4, 9)
+    ov.close()

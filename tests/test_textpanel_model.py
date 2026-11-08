@@ -1,56 +1,68 @@
 from parzprint.ocr.base import TextBlock
-from parzprint.textpanel import TextSelectionModel
+from parzprint.textpanel import TextLayout
 
-B = [TextBlock("a", 0, 0, 10, 10), TextBlock("b", 20, 0, 10, 10), TextBlock("c", 0, 20, 10, 10)]
-
-
-def test_hit():
-    m = TextSelectionModel(B)
-    assert m.hit(5, 5) == 0
-    assert m.hit(25, 5) == 1
-    assert m.hit(50, 50) is None
+# medida uniforme: cada caractere tem 1 unidade, esticada para a largura do bloco
+B = [TextBlock("olá mundo", 0, 0, 90, 10), TextBlock("segunda", 0, 20, 70, 10)]
 
 
-def test_select_only_and_text():
-    m = TextSelectionModel(B)
-    m.select_only(1)
-    assert m.selected_indices() == [1]
-    assert m.selected_text() == "b"
+def test_text_joins_lines():
+    assert TextLayout(B).text == "olá mundo\nsegunda"
 
 
-def test_drag_selects_intersecting_in_reading_order():
-    m = TextSelectionModel(B)
-    m.select_range_by_drag((5, 5, 30, 20))
-    assert m.selected_indices() == [0, 1, 2]
-    assert m.selected_text() == "a\nb\nc"
+def test_position_at_inside_lines():
+    t = TextLayout(B)
+    assert t.position_at(0, 5) == 0
+    assert t.position_at(31, 5) == 3
+    assert t.position_at(14, 25) == 11  # "s|egunda"
 
 
-def test_drag_with_negative_size_is_normalized():
-    m = TextSelectionModel(B)
-    m.select_range_by_drag((30, 8, -25, -6))
-    assert m.selected_indices() == [0, 1]
+def test_position_at_clamps_to_line_ends_and_nearest_line():
+    t = TextLayout(B)
+    assert t.position_at(500, 5) == 9  # fim da primeira linha
+    assert t.position_at(-50, 25) == 10  # começo da segunda
+    assert t.position_at(30, 300) == 13  # abaixo de tudo: última linha
+    assert t.position_at(30, -40) == 3  # acima de tudo: primeira linha
 
 
-def test_drag_replaces_previous_selection():
-    m = TextSelectionModel(B)
-    m.select_only(2)
-    m.select_range_by_drag((0, 0, 5, 5))
-    assert m.selected_indices() == [0]
+def test_select_partial_across_lines():
+    t = TextLayout(B)
+    t.select(2, 13)
+    assert t.selected_text() == "á mundo\nseg"
+    t.select(13, 2)  # arrastar de trás para frente dá o mesmo trecho
+    assert t.selected_text() == "á mundo\nseg"
 
 
-def test_clear_and_empty_selected_text():
-    m = TextSelectionModel(B)
-    m.select_only(0)
-    m.clear()
-    assert m.selected_indices() == []
-    assert m.selected_text() == ""
+def test_selection_rects_follow_characters():
+    t = TextLayout(B)
+    t.select(3, 13)
+    assert t.selection_rects() == [(30, 0, 90, 10), (0, 20, 30, 30)]
 
 
-def test_all_text():
-    assert TextSelectionModel(B).all_text() == "a\nb\nc"
+def test_word_at():
+    t = TextLayout(B)
+    assert t.word_at(5) == (4, 9)
+    assert t.text[slice(*t.word_at(12))] == "segunda"
 
 
-def test_empty_model():
-    m = TextSelectionModel([])
-    assert m.all_text() == ""
-    assert m.hit(0, 0) is None
+def test_select_all_and_clear():
+    t = TextLayout(B)
+    t.select_all()
+    assert t.selected_text() == "olá mundo\nsegunda"
+    t.clear()
+    assert t.selected_text() == ""
+    assert t.selection_rects() == []
+
+
+def test_measure_function_shapes_edges():
+    # "iW": 'i' estreito, 'W' largo -> a fronteira fica perto do começo
+    t = TextLayout([TextBlock("iW", 0, 0, 40, 10)], measure=lambda s: sum(1 if c == "i" else 3 for c in s))
+    assert t.position_at(9, 5) == 1
+    assert t.position_at(12, 5) == 1
+    assert t.position_at(35, 5) == 2
+
+
+def test_empty_layout():
+    t = TextLayout([])
+    assert t.text == ""
+    assert t.position_at(10, 10) == 0
+    assert t.selection_rects() == []

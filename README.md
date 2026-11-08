@@ -29,6 +29,8 @@ pytest
 python build.py
 ```
 
+Feche o Parzprint antes (bandeja, Sair): com ele aberto, o Windows trava os arquivos de `dist/`.
+
 O resultado fica em `dist/Parzprint/` (`Parzprint.exe` no Windows). Copie a pasta inteira
 para onde quiser e abra o executável: ele fica na bandeja e, se a opção estiver ligada,
 passa a iniciar com o sistema a partir desse local.
@@ -43,3 +45,8 @@ O pacote do Linux precisa ser gerado numa máquina Linux. O modelo do Indra (cer
   comando no atalho de teclado do sistema, porque lá o atalho global não funciona.
 - `parzprint --settings` abre as configurações.
 - No editor: `Ctrl+Z` desfaz, `Ctrl+C` ou `Enter` copia a imagem, `Ctrl+S` salva, `Esc` fecha.
+- A roda do mouse muda o tamanho da ferramenta escolhida (lápis, linha, seta, retângulo,
+  marca-texto e texto). O botão de cor abre a janela Cor do Windows.
+- No botão **Texto**: arraste sobre o texto da imagem para selecionar um trecho, clique duas
+  vezes numa palavra para pegá-la e use o botão **Copiar** que aparece ao lado. `Ctrl+A`
+  seleciona tudo e `Ctrl+C` copia a seleção.
