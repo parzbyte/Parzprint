@@ -162,6 +162,7 @@ class SelectionOverlay(QWidget):
             self.update()
             return
         if self.editor is not None and self.editor.move(e.position()):
+            self._update_cursor(p)  # o editor tratou o movimento, mas o cursor ainda é daqui
             return
         self._update_cursor(p)
 

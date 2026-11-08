@@ -278,11 +278,8 @@ class Editor(QObject):
     # ---------- mouse ----------
     def cursor_for(self, p: QPoint):
         if self.text_mode:
-            if self.layout is not None and self.ov.sel.contains(p):
-                pt = self.to_image(QPointF(p))
-                if self.layout.is_over_text(pt.x, pt.y):
-                    return Qt.CursorShape.IBeamCursor
-            return Qt.CursorShape.ArrowCursor
+            # cursor de inserção em toda a área: dá para começar a seleção de qualquer ponto
+            return Qt.CursorShape.IBeamCursor if self.ov.sel.contains(p) else Qt.CursorShape.ArrowCursor
         if self.tool is not None and self.ov.sel.contains(p):
             return Qt.CursorShape.IBeamCursor if self.tool is Tool.TEXT else Qt.CursorShape.CrossCursor
         return None

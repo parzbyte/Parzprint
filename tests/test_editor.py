@@ -205,3 +205,34 @@ def test_selecting_in_panel_highlights_image(qapp):
     ed.panel.edit.setTextCursor(c)
     assert ed.layout.selection == (4, 9)
     ov.close()
+
+
+def _move_mouse(ov, x, y, buttons=Qt.MouseButton.NoButton):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QMouseEvent
+
+    pos = QPointF(x, y)
+    ev = QMouseEvent(
+        QMouseEvent.Type.MouseMove, pos, QPointF(ov.mapToGlobal(QPoint(x, y))),
+        Qt.MouseButton.NoButton, buttons, Qt.KeyboardModifier.NoModifier,
+    )
+    ov.mouseMoveEvent(ev)
+
+
+def test_text_mode_shows_insertion_cursor(qapp):
+    ov, ed, _ = open_text_mode(qapp)
+    ov.setCursor(Qt.CursorShape.CrossCursor)
+    _move_mouse(ov, 200, 180)  # dentro da seleção, longe das linhas de texto
+    assert ov.cursor().shape() == Qt.CursorShape.IBeamCursor
+    _move_mouse(ov, 70, 66)  # sobre o texto
+    assert ov.cursor().shape() == Qt.CursorShape.IBeamCursor
+    ov.close()
+
+
+def test_insertion_cursor_while_dragging_text(qapp):
+    ov, ed, _ = open_text_mode(qapp)
+    ov.setCursor(Qt.CursorShape.CrossCursor)
+    ed.press(QPointF(60, 66))
+    _move_mouse(ov, 120, 86, Qt.MouseButton.LeftButton)
+    assert ov.cursor().shape() == Qt.CursorShape.IBeamCursor
+    ov.close()
