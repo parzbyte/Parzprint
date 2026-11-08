@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import math
-import sys
 from dataclasses import dataclass, field, replace
-from functools import lru_cache
 
-from PIL import Image, ImageColor, ImageDraw, ImageFont
+from PIL import Image
 
 PALETTE = ["#E53935", "#FDD835", "#43A047", "#1E88E5", "#000000", "#FFFFFF"]
 DEFAULT_COLOR = PALETTE[0]
 MARKER_ALPHA = 102  # 40%
-ARROW_HEAD = 12
 
 
 @dataclass(frozen=True)
@@ -105,77 +102,121 @@ def translated(a: Annotation, dx: float, dy: float) -> Annotation:
     return replace(a, start=_shift(a.start, dx, dy), end=_shift(a.end, dx, dy))
 
 
-_FONT_CANDIDATES = (
-    ["C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf"]
-    if sys.platform == "win32"
-    else [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-    ]
-)
+def _qcolor(color: str, alpha: int = 255):
+    from PySide6.QtGui import QColor
+
+    c = QColor(color)
+    c.setAlpha(alpha)
+    return c
 
 
-@lru_cache(maxsize=16)
-def font(size: int) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
-    for path in _FONT_CANDIDATES:
-        try:
-            return ImageFont.truetype(path, size)
-        except OSError:
-            continue
-    return ImageFont.load_default(size)
+def _pen(color, width: float, cap=None):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QPen
+
+    pen = QPen(color, width)
+    pen.setCapStyle(cap if cap is not None else Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    return pen
 
 
-def _xy(points: list[Point]) -> list[tuple[float, float]]:
-    return [(p.x, p.y) for p in points]
+def _smooth_path(points: list[Point]):
+    """Caminho suave pelos pontos (curvas entre os pontos médios)."""
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QPainterPath
+
+    path = QPainterPath(QPointF(points[0].x, points[0].y))
+    if len(points) == 1:
+        path.lineTo(QPointF(points[0].x + 0.01, points[0].y))
+        return path
+    for a, b in zip(points[1:-1], points[2:]):
+        mid = QPointF((a.x + b.x) / 2, (a.y + b.y) / 2)
+        path.quadTo(QPointF(a.x, a.y), mid)
+    path.lineTo(QPointF(points[-1].x, points[-1].y))
+    return path
 
 
-def _rgba(color: str, alpha: int = 255) -> tuple[int, int, int, int]:
-    r, g, b = ImageColor.getrgb(color)[:3]
-    return (r, g, b, alpha)
+def arrow_head_size(width: float) -> tuple[float, float]:
+    """(comprimento, meia-largura) da ponta da seta; cresce com a espessura, como no Lightshot."""
+    length = 8 + width * 4
+    return length, length * 0.42
 
 
-def _polyline(draw: ImageDraw.ImageDraw, pts: list[Point], fill, width: int) -> None:
-    if len(pts) == 1:
-        p = pts[0]
-        r = width / 2
-        draw.ellipse([p.x - r, p.y - r, p.x + r, p.y + r], fill=fill)
+def _paint_arrow(p, a: Arrow) -> None:
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QPolygonF
+
+    color = _qcolor(a.color)
+    dx, dy = a.end.x - a.start.x, a.end.y - a.start.y
+    dist = math.hypot(dx, dy)
+    if dist < 0.5:
         return
-    draw.line(_xy(pts), fill=fill, width=width, joint="curve")
+    ux, uy = dx / dist, dy / dist
+    length, half = arrow_head_size(a.width)
+    length = min(length, dist)
+    half = min(half, length * 0.42 if length < arrow_head_size(a.width)[0] else half)
+    base = QPointF(a.end.x - ux * length, a.end.y - uy * length)
+    # a haste termina dentro da ponta, para não aparecer um degrau na base
+    shaft_end = QPointF(a.end.x - ux * length * 0.6, a.end.y - uy * length * 0.6)
+    p.setPen(_pen(color, a.width, Qt.PenCapStyle.RoundCap))
+    p.drawLine(QPointF(a.start.x, a.start.y), shaft_end)
+    left = QPointF(base.x() - uy * half, base.y() + ux * half)
+    right = QPointF(base.x() + uy * half, base.y() - ux * half)
+    p.setPen(_pen(color, 1))
+    p.setBrush(color)
+    p.drawPolygon(QPolygonF([QPointF(a.end.x, a.end.y), left, right]))
+    p.setBrush(Qt.BrushStyle.NoBrush)
 
 
-def _arrow(draw: ImageDraw.ImageDraw, a: Arrow) -> None:
-    fill = _rgba(a.color)
-    angle = math.atan2(a.end.y - a.start.y, a.end.x - a.start.x)
-    head = ARROW_HEAD + a.width * 2
-    base = Point(a.end.x - head * 0.8 * math.cos(angle), a.end.y - head * 0.8 * math.sin(angle))
-    draw.line([(a.start.x, a.start.y), (base.x, base.y)], fill=fill, width=a.width)
-    left = (a.end.x - head * math.cos(angle - math.pi / 7), a.end.y - head * math.sin(angle - math.pi / 7))
-    right = (a.end.x - head * math.cos(angle + math.pi / 7), a.end.y - head * math.sin(angle + math.pi / 7))
-    draw.polygon([(a.end.x, a.end.y), left, right], fill=fill)
+def paint_annotation(p, a: Annotation) -> None:
+    """Desenha uma anotação com um QPainter (coordenadas da imagem recortada)."""
+    from PySide6.QtCore import QPointF, QRectF, Qt
+    from PySide6.QtGui import QFont
+
+    p.setRenderHint(p.RenderHint.Antialiasing, True)
+    p.setRenderHint(p.RenderHint.TextAntialiasing, True)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    if isinstance(a, Marker):
+        p.setPen(_pen(_qcolor(a.color, MARKER_ALPHA), a.width, Qt.PenCapStyle.SquareCap))
+        p.drawPath(_smooth_path(a.points))
+    elif isinstance(a, Pencil):
+        p.setPen(_pen(_qcolor(a.color), a.width))
+        p.drawPath(_smooth_path(a.points))
+    elif isinstance(a, Line):
+        p.setPen(_pen(_qcolor(a.color), a.width))
+        p.drawLine(QPointF(a.start.x, a.start.y), QPointF(a.end.x, a.end.y))
+    elif isinstance(a, Arrow):
+        _paint_arrow(p, a)
+    elif isinstance(a, Rect):
+        x0, x1 = sorted((a.start.x, a.end.x))
+        y0, y1 = sorted((a.start.y, a.end.y))
+        pen = _pen(_qcolor(a.color), a.width, Qt.PenCapStyle.SquareCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+        p.setPen(pen)
+        p.drawRect(QRectF(x0, y0, x1 - x0, y1 - y0))
+    elif isinstance(a, Text):
+        f = QFont()
+        f.setPixelSize(max(1, round(a.size)))
+        p.setFont(f)
+        p.setPen(_qcolor(a.color))
+        ascent = p.fontMetrics().ascent()
+        for i, line in enumerate(a.text.split("\n")):
+            p.drawText(QPointF(a.position.x, a.position.y + ascent + i * p.fontMetrics().lineSpacing()), line)
 
 
 def render(image: Image.Image, items: list[Annotation]) -> Image.Image:
-    """Devolve uma cópia de ``image`` com as anotações desenhadas por cima."""
+    """Devolve uma cópia de ``image`` com as anotações desenhadas por cima (suavizadas)."""
+    if not items:
+        return image.copy()
+    from PySide6.QtGui import QPainter
+
+    from .qtutil import pil_to_qimage, qimage_to_pil
+
     mode = image.mode
-    out = image.convert("RGBA")
+    q = pil_to_qimage(image)
+    p = QPainter(q)
     for a in items:
-        if isinstance(a, Marker):
-            layer = Image.new("RGBA", out.size, (0, 0, 0, 0))
-            _polyline(ImageDraw.Draw(layer), a.points, _rgba(a.color, MARKER_ALPHA), a.width)
-            out = Image.alpha_composite(out, layer)
-            continue
-        draw = ImageDraw.Draw(out)
-        if isinstance(a, Pencil):
-            _polyline(draw, a.points, _rgba(a.color), a.width)
-        elif isinstance(a, Line):
-            draw.line([(a.start.x, a.start.y), (a.end.x, a.end.y)], fill=_rgba(a.color), width=a.width)
-        elif isinstance(a, Arrow):
-            _arrow(draw, a)
-        elif isinstance(a, Rect):
-            x0, x1 = sorted((a.start.x, a.end.x))
-            y0, y1 = sorted((a.start.y, a.end.y))
-            draw.rectangle([x0, y0, x1, y1], outline=_rgba(a.color), width=a.width)
-        elif isinstance(a, Text):
-            draw.text((a.position.x, a.position.y), a.text, fill=_rgba(a.color), font=font(a.size))
+        paint_annotation(p, a)
+    p.end()
+    out = qimage_to_pil(q)
     return out if mode == "RGBA" else out.convert(mode)

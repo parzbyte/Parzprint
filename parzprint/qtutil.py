@@ -17,3 +17,11 @@ def pil_to_qpixmap(image: Image.Image, scale: float = 1.0) -> QPixmap:
     pm = QPixmap.fromImage(pil_to_qimage(image))
     pm.setDevicePixelRatio(scale)
     return pm
+
+
+def qimage_to_pil(qimage: QImage) -> Image.Image:
+    """QImage -> imagem RGBA do Pillow."""
+    q = qimage.convertToFormat(QImage.Format.Format_RGBA8888)
+    w, h = q.width(), q.height()
+    data = bytes(q.constBits())[: q.bytesPerLine() * h]
+    return Image.frombuffer("RGBA", (w, h), data, "raw", "RGBA", q.bytesPerLine(), 1).copy()

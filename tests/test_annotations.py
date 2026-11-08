@@ -27,23 +27,56 @@ def test_empty_text_annotation_is_dropped():
     assert len(s) == 1
 
 
-def test_render_rect_paints_border_pixel_and_keeps_original():
+def near(px, rgb, tol=40):
+    return all(abs(a - b) <= tol for a, b in zip(px[:3], rgb))
+
+
+def dark_box(img, threshold=128):
+    """Retângulo (x0, y0, x1, y1) dos pixels escuros."""
+    xs, ys = [], []
+    for y in range(img.height):
+        for x in range(img.width):
+            if sum(img.getpixel((x, y))[:3]) / 3 < threshold:
+                xs.append(x)
+                ys.append(y)
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def test_render_rect_paints_border_and_keeps_original():
     img = Image.new("RGB", (50, 50), "white")
-    out = render(img, [Rect(Point(10, 10), Point(30, 30), "#E53935", width=1)])
-    assert out.getpixel((10, 20))[:3] == (229, 57, 53)
+    out = render(img, [Rect(Point(10, 10), Point(30, 30), "#E53935", width=3)])
+    assert near(out.getpixel((10, 20)), (229, 57, 53))
     assert out.getpixel((20, 20))[:3] == (255, 255, 255)
     assert img.getpixel((10, 20)) == (255, 255, 255)
 
 
 def test_render_rect_accepts_reversed_corners():
-    out = render(Image.new("RGB", (50, 50), "white"), [Rect(Point(30, 30), Point(10, 10), "#000000", width=1)])
-    assert out.getpixel((10, 20))[:3] == (0, 0, 0)
+    out = render(Image.new("RGB", (50, 50), "white"), [Rect(Point(30, 30), Point(10, 10), "#000000", width=3)])
+    assert near(out.getpixel((10, 20)), (0, 0, 0))
 
 
-def test_render_arrow_paints_head():
-    out = render(Image.new("RGB", (60, 30), "white"), [Arrow(Point(5, 15), Point(50, 15), "#000000", width=1)])
-    assert out.getpixel((48, 15))[:3] == (0, 0, 0)
-    assert out.getpixel((40, 11))[:3] == (0, 0, 0)  # wing of the head, off the shaft
+def test_render_is_antialiased():
+    out = render(Image.new("RGB", (60, 60), "white"), [Line(Point(5, 8), Point(55, 50), "#000000", width=3)])
+    grays = {out.getpixel((x, y))[0] for x in range(60) for y in range(60)}
+    assert any(30 < g < 225 for g in grays)  # bordas suavizadas, não só preto e branco
+
+
+def test_render_arrow_paints_shaft_and_head():
+    out = render(Image.new("RGB", (100, 40), "white"), [Arrow(Point(5, 20), Point(90, 20), "#000000", width=3)])
+    assert near(out.getpixel((30, 20)), (0, 0, 0))  # haste
+    assert near(out.getpixel((86, 20)), (0, 0, 0))  # ponta
+    x0, y0, x1, y1 = dark_box(out)
+    assert y1 - y0 >= 10  # a cabeça é bem mais larga que a haste
+    assert x1 <= 91  # não passa da ponta
+
+
+def test_arrow_head_grows_with_width():
+    def head_height(w):
+        out = render(Image.new("RGB", (200, 120), "white"), [Arrow(Point(10, 60), Point(180, 60), "#000000", width=w)])
+        _, y0, _, y1 = dark_box(out)
+        return y1 - y0
+
+    assert head_height(8) > head_height(2) * 2
 
 
 def test_render_pencil_and_line():
@@ -51,15 +84,18 @@ def test_render_pencil_and_line():
         Image.new("RGB", (40, 40), "white"),
         [Pencil([Point(2, 2), Point(2, 30)], "#000000"), Line(Point(10, 35), Point(35, 35), "#000000")],
     )
-    assert out.getpixel((2, 15))[:3] == (0, 0, 0)
-    assert out.getpixel((20, 35))[:3] == (0, 0, 0)
+    assert near(out.getpixel((2, 15)), (0, 0, 0))
+    assert near(out.getpixel((20, 35)), (0, 0, 0))
 
 
-def test_render_marker_is_translucent():
-    out = render(Image.new("RGB", (40, 40), "white"), [Marker([Point(5, 20), Point(35, 20)], "#1E88E5")])
-    px = out.getpixel((20, 20))[:3]
-    assert px != (255, 255, 255)
-    assert px != (30, 136, 229)
+def test_render_marker_is_translucent_and_uniform():
+    out = render(
+        Image.new("RGB", (60, 40), "white"),
+        [Marker([Point(5, 20), Point(30, 20), Point(30, 21), Point(55, 20)], "#1E88E5")],
+    )
+    a, b = out.getpixel((15, 20))[:3], out.getpixel((30, 20))[:3]
+    assert a != (255, 255, 255) and a != (30, 136, 229)
+    assert near(a, b, tol=6)  # sem escurecer onde o traço se sobrepõe
 
 
 def test_render_text_draws_something():

@@ -33,15 +33,6 @@ class Monitor:
         return self.image.width / self.width if self.width else 1.0
 
 
-def qimage_to_pil(qimage) -> Image.Image:
-    from PySide6.QtGui import QImage
-
-    q = qimage.convertToFormat(QImage.Format.Format_RGBA8888)
-    w, h = q.width(), q.height()
-    data = bytes(q.constBits())[: q.bytesPerLine() * h]
-    return Image.frombuffer("RGBA", (w, h), data, "raw", "RGBA", q.bytesPerLine(), 1).convert("RGB")
-
-
 def _grab_screens() -> list[Monitor]:
     from PySide6.QtGui import QGuiApplication
 
@@ -51,7 +42,9 @@ def _grab_screens() -> list[Monitor]:
         pixmap = screen.grabWindow(0)
         if pixmap.isNull():
             raise CaptureError(f"Não foi possível capturar o monitor {i}")
-        image = qimage_to_pil(pixmap.toImage())
+        from .qtutil import qimage_to_pil
+
+        image = qimage_to_pil(pixmap.toImage()).convert("RGB")
         monitors.append(Monitor(i, g.x(), g.y(), g.width(), g.height(), image, screen.devicePixelRatio()))
     return monitors
 

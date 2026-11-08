@@ -2,26 +2,28 @@
 
 from __future__ import annotations
 
-import math
 from enum import Enum
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap, QPolygonF
-from PySide6.QtWidgets import QColorDialog, QHBoxLayout, QLabel, QMenu, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QByteArray, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
-from .annotations import DEFAULT_COLOR, PALETTE
+from .annotations import DEFAULT_COLOR
+from .colordialog import choose_color
 
-BUTTON = 30
+BUTTON = 32
 ICON = 20
-FG = QColor("#EEEEEE")
+FG = "#ECECEC"
+FG_DISABLED = "#6E6E6E"
 
 STYLE = """
-QWidget#bar { background: rgba(32, 32, 32, 235); border: 1px solid rgba(255,255,255,40); border-radius: 6px; }
-QToolButton { background: transparent; border: none; border-radius: 4px; padding: 2px; }
-QToolButton:hover { background: rgba(255,255,255,30); }
-QToolButton:checked { background: rgba(30,136,229,170); }
-QToolButton:disabled { opacity: 0.4; }
-QLabel { color: #EEEEEE; padding: 0 6px; }
+QWidget#bar { background: rgba(28, 28, 30, 240); border: 1px solid rgba(255,255,255,38); border-radius: 7px; }
+QToolButton { background: transparent; border: none; border-radius: 5px; padding: 0px; }
+QToolButton:hover { background: rgba(255,255,255,28); }
+QToolButton:pressed { background: rgba(255,255,255,45); }
+QToolButton:checked { background: rgba(30,136,229,200); }
+QLabel { color: #ECECEC; padding: 0 6px; }
 """
 
 
@@ -34,91 +36,60 @@ class Tool(Enum):
     TEXT = "Texto"
 
 
-def _pen(color: QColor, width: float = 2.0) -> QPen:
-    pen = QPen(color, width)
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-    return pen
+# Ícones de traço (grade 24x24, traço 2, pontas arredondadas). Desenhados para este app.
+_SVG = {
+    "pencil": '<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/><path d="m14.5 5.5 3 3"/>',
+    "line": '<path d="M5 19 19 5"/>',
+    "arrow": '<path d="M5 19 18 6"/><path d="M9.5 5H19v9.5" />',
+    "rect": '<rect x="4" y="5" width="16" height="14" rx="1.5"/>',
+    "marker": '<path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>',
+    "text": '<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>',
+    "undo": '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+    "save": '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+    "copy": '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
+    "print": '<path d="M7 9V3h10v6"/><path d="M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/>',
+    "ocr": '<path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7.5 8.5h9"/><path d="M12 8.5v7"/>',
+    "close": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+}
 
 
-def _arrow_head(p: QPainter, a: QPointF, b: QPointF, size: float = 6) -> None:
-    ang = math.atan2(b.y() - a.y(), b.x() - a.x())
-    left = QPointF(b.x() - size * math.cos(ang - 0.5), b.y() - size * math.sin(ang - 0.5))
-    right = QPointF(b.x() - size * math.cos(ang + 0.5), b.y() - size * math.sin(ang + 0.5))
-    p.drawPolygon(QPolygonF([b, left, right]))
+def _svg(name: str, color: str) -> bytes:
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+        f'stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        f"{_SVG[name]}</svg>"
+    ).encode()
 
 
-def make_icon(name: str, color: QColor = FG) -> QIcon:
-    """Ícones simples desenhados com QPainter (sem arquivos de imagem)."""
-    pm = QPixmap(ICON * 2, ICON * 2)
-    pm.setDevicePixelRatio(2)
+def _pixmap(svg: bytes, size: int = ICON, ratio: float = 2.0) -> QPixmap:
+    pm = QPixmap(round(size * ratio), round(size * ratio))
+    pm.setDevicePixelRatio(ratio)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setPen(_pen(color))
-    p.setBrush(Qt.BrushStyle.NoBrush)
-    s = ICON
-    if name == "pencil":
-        p.drawLine(QPointF(4, 16), QPointF(15, 5))
-        p.drawLine(QPointF(13, 3), QPointF(17, 7))
-        p.drawLine(QPointF(4, 16), QPointF(3, 17))
-    elif name == "line":
-        p.drawLine(QPointF(4, 16), QPointF(16, 4))
-    elif name == "arrow":
-        p.setBrush(color)
-        p.drawLine(QPointF(4, 16), QPointF(14, 6))
-        _arrow_head(p, QPointF(4, 16), QPointF(16, 4))
-    elif name == "rect":
-        p.drawRect(QRectF(4, 5, 12, 10))
-    elif name == "marker":
-        p.setPen(_pen(QColor(253, 216, 53, 200), 6))
-        p.drawLine(QPointF(4, 14), QPointF(16, 6))
-    elif name == "text":
-        f = QFont()
-        f.setPixelSize(16)
-        f.setBold(True)
-        p.setFont(f)
-        p.drawText(QRectF(0, 0, s, s), Qt.AlignmentFlag.AlignCenter, "T")
-    elif name == "undo":
-        p.drawArc(QRectF(5, 5, 11, 10), 90 * 16, -230 * 16)
-        p.setBrush(color)
-        _arrow_head(p, QPointF(11, 3), QPointF(6, 5), 5)
-    elif name == "save":
-        p.drawLine(QPointF(10, 3), QPointF(10, 12))
-        p.drawPolyline(QPolygonF([QPointF(6, 8), QPointF(10, 12), QPointF(14, 8)]))
-        p.drawPolyline(QPolygonF([QPointF(4, 13), QPointF(4, 16), QPointF(16, 16), QPointF(16, 13)]))
-    elif name == "copy":
-        p.drawRect(QRectF(7, 7, 9, 10))
-        p.drawPolyline(QPolygonF([QPointF(4, 13), QPointF(4, 3), QPointF(12, 3)]))
-    elif name == "print":
-        p.drawRect(QRectF(3, 8, 14, 6))
-        p.drawPolyline(QPolygonF([QPointF(6, 8), QPointF(6, 3), QPointF(14, 3), QPointF(14, 8)]))
-        p.drawRect(QRectF(6, 12, 8, 5))
-    elif name == "ocr":
-        pen = _pen(color, 1.5)
-        pen.setStyle(Qt.PenStyle.DashLine)
-        p.setPen(pen)
-        p.drawRect(QRectF(2.5, 2.5, 15, 15))
-        p.setPen(_pen(color))
-        p.drawLine(QPointF(6, 7), QPointF(14, 7))
-        p.drawLine(QPointF(6, 10), QPointF(14, 10))
-        p.drawLine(QPointF(6, 13), QPointF(11, 13))
-    elif name == "close":
-        p.drawLine(QPointF(5, 5), QPointF(15, 15))
-        p.drawLine(QPointF(15, 5), QPointF(5, 15))
+    QSvgRenderer(QByteArray(svg)).render(p, QRectF(0, 0, size, size))
     p.end()
-    return QIcon(pm)
+    return pm
+
+
+def make_icon(name: str) -> QIcon:
+    icon = QIcon()
+    icon.addPixmap(_pixmap(_svg(name, FG)), QIcon.Mode.Normal)
+    icon.addPixmap(_pixmap(_svg(name, FG_DISABLED)), QIcon.Mode.Disabled)
+    return icon
 
 
 def color_icon(color: str) -> QIcon:
-    pm = QPixmap(ICON * 2, ICON * 2)
-    pm.setDevicePixelRatio(2)
+    """Bolinha com a cor atual, com contorno claro (visível sobre qualquer cor)."""
+    ratio = 2.0
+    pm = QPixmap(round(ICON * ratio), round(ICON * ratio))
+    pm.setDevicePixelRatio(ratio)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setPen(QPen(QColor("#EEEEEE"), 1.5))
+    p.setPen(QPen(QColor(FG), 1.5))
     p.setBrush(QColor(color))
-    p.drawRoundedRect(QRectF(3, 3, 14, 14), 3, 3)
+    p.drawEllipse(QRectF(3, 3, ICON - 6, ICON - 6))
     p.end()
     return QIcon(pm)
 
@@ -161,13 +132,14 @@ class SideToolbar(_Bar):
         lay.setSpacing(2)
         self.buttons: dict[Tool, QToolButton] = {}
         for tool, icon in self._ICONS.items():
-            b = _button(self, make_icon(icon), tool.value, checkable=True)
+            tip = f"{tool.value} (roda do mouse muda o tamanho)"
+            b = _button(self, make_icon(icon), tip, checkable=True)
             b.clicked.connect(lambda checked, t=tool: self._on_tool(t, checked))
             lay.addWidget(b)
             self.buttons[tool] = b
         self.color = DEFAULT_COLOR
         self.color_button = _button(self, color_icon(self.color), "Cor")
-        self.color_button.clicked.connect(self._open_colors)
+        self.color_button.clicked.connect(self.open_colors)
         lay.addWidget(self.color_button)
         self.undo_button = _button(self, make_icon("undo"), "Desfazer (Ctrl+Z)")
         self.undo_button.clicked.connect(self.undo_requested)
@@ -190,21 +162,13 @@ class SideToolbar(_Bar):
         self.color_button.setIcon(color_icon(color))
         self.color_changed.emit(color)
 
-    def _open_colors(self) -> None:
-        menu = QMenu(self)
-        for c in PALETTE:
-            act = QAction(color_icon(c), c, menu)
-            act.triggered.connect(lambda _=False, c=c: self.set_color(c))
-            menu.addAction(act)
-        menu.addSeparator()
-        more = menu.addAction("Mais cores…")
-        more.triggered.connect(self._more_colors)
-        menu.exec(self.color_button.mapToGlobal(self.color_button.rect().topRight()))
-
-    def _more_colors(self) -> None:
-        c = QColorDialog.getColor(QColor(self.color), self.window(), "Escolher cor")
-        if c.isValid():
-            self.set_color(c.name().upper())
+    def open_colors(self) -> None:
+        chosen = choose_color(self.color, self)
+        if chosen:
+            self.set_color(chosen)
+        w = self.window()
+        w.activateWindow()
+        w.setFocus()
 
     def set_tools_enabled(self, enabled: bool) -> None:
         for b in [*self.buttons.values(), self.color_button, self.undo_button]:

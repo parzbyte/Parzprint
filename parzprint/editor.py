@@ -10,12 +10,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from PIL import Image
-from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import QLineEdit, QMessageBox
 
 from .annotations import (
-    DEFAULT_COLOR, AnnotationStack, Arrow, Line, Marker, Pencil, Point, Rect, Text, render,
+    DEFAULT_COLOR, AnnotationStack, Arrow, Line, Marker, Pencil, Point, Rect, Text, paint_annotation, render,
 )
 from .capture import crop
 from .export import ask_save_path, copy_image, copy_text, print_image, save_image
@@ -28,6 +28,13 @@ from .textpanel import TextPanel, TextSelectionModel
 from .toolbar import BottomToolbar, SideToolbar, Tool
 
 TEXT_SIZE = 20
+# tamanho inicial de cada ferramenta (pixels lógicos; para Texto, tamanho da fonte)
+DEFAULT_SIZES = {
+    Tool.PENCIL: 3, Tool.LINE: 3, Tool.ARROW: 4, Tool.RECT: 3, Tool.MARKER: 16, Tool.TEXT: TEXT_SIZE,
+}
+SIZE_LIMITS = {Tool.MARKER: (6, 60), Tool.TEXT: (10, 72)}  # demais: 1 a 30
+SIZE_STEPS = {Tool.MARKER: 2, Tool.TEXT: 2}  # demais: 1
+HUD_MS = 900
 PANEL_SIZE = QSize(420, 440)
 BOX_FILL = QColor(30, 136, 229, 64)
 BOX_SELECTED = QColor(30, 136, 229, 128)
@@ -70,6 +77,13 @@ class Editor(QObject):
         self.stack = AnnotationStack()
         self.tool: Tool | None = None
         self.color = DEFAULT_COLOR
+        self.sizes: dict[Tool, int] = dict(DEFAULT_SIZES)
+        self._committed_pixmap = None
+        self._committed_pixmap_src = None
+        self._hud_pos: QPointF | None = None
+        self._hud_timer = QTimer(self)
+        self._hud_timer.setSingleShot(True)
+        self._hud_timer.timeout.connect(self._hide_hud)
         self._current = None
         self._base: Image.Image | None = None
         self._committed: Image.Image | None = None
@@ -160,10 +174,72 @@ class Editor(QObject):
 
     def paint(self, p: QPainter) -> None:
         img = self._committed_image()
+        if self._committed_pixmap_src is not img:
+            self._committed_pixmap = pil_to_qpixmap(img, self.scale)
+            self._committed_pixmap_src = img
+        p.drawPixmap(self.ov.sel.topLeft(), self._committed_pixmap)
         if self._current is not None:
-            img = render(img, [self._current])
-        p.drawPixmap(self.ov.sel.topLeft(), pil_to_qpixmap(img, self.scale))
+            # o traço em andamento é desenhado direto na tela, com o mesmo código da imagem final
+            p.save()
+            p.setClipRect(self.ov.sel)
+            p.translate(self.ov.sel.topLeft())
+            p.scale(1 / self.scale, 1 / self.scale)
+            paint_annotation(p, self._current)
+            p.restore()
         self.paint_extra(p)
+        self._paint_hud(p)
+
+    # ---------- tamanho da ferramenta (roda do mouse) ----------
+    def wheel(self, delta: int, pos: QPointF | None = None) -> bool:
+        tool = Tool.TEXT if self._text_edit is not None else self.tool
+        if tool is None or self.text_mode or delta == 0:
+            return False
+        lo, hi = SIZE_LIMITS.get(tool, (1, 30))
+        step = SIZE_STEPS.get(tool, 1) * (1 if delta > 0 else -1)
+        self.sizes[tool] = max(lo, min(hi, self.sizes[tool] + step))
+        if self._text_edit is not None:
+            self._style_text_edit(self._text_edit)
+        if pos is not None:
+            self._hud_pos = QPointF(pos)
+        elif self._hud_pos is None:
+            self._hud_pos = QPointF(self.ov.sel.center())
+        self._hud_tool = tool
+        self._hud_timer.start(HUD_MS)
+        self.ov.update()
+        return True
+
+    def _hide_hud(self) -> None:
+        self._hud_pos = None
+        self.ov.update()
+
+    def _paint_hud(self, p: QPainter) -> None:
+        if self._hud_pos is None:
+            return
+        tool = self._hud_tool
+        size = self.sizes[tool]
+        c = QPointF(self._hud_pos)
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if tool is not Tool.TEXT:
+            r = max(size, 2) / 2
+            p.setPen(QPen(QColor(255, 255, 255, 230), 1))
+            fill = QColor(self.color)
+            fill.setAlpha(100 if tool is Tool.MARKER else 220)
+            p.setBrush(fill)
+            p.drawEllipse(c, r, r)
+        label = f"{size} px"
+        f = QFont()
+        f.setPixelSize(12)
+        p.setFont(f)
+        fm = p.fontMetrics()
+        w, h = fm.horizontalAdvance(label) + 12, fm.height() + 6
+        box = QRect(round(c.x() + size / 2 + 8), round(c.y() - h / 2), w, h)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(0, 0, 0, 190))
+        p.drawRoundedRect(box, 4, 4)
+        p.setPen(QColor("#FFFFFF"))
+        p.drawText(box, Qt.AlignmentFlag.AlignCenter, label)
+        p.restore()
 
     def paint_extra(self, p: QPainter) -> None:
         """Caixas dos blocos de texto por cima da imagem, quando o painel está aberto."""
@@ -210,13 +286,13 @@ class Editor(QObject):
             return False
         self._finish_text()
         pt = self.to_image(pos)
-        w = max(1, round(3 * self.scale))
+        w = max(1, round(self.sizes.get(self.tool, 3) * self.scale))
         if self.tool is Tool.TEXT:
             self._start_text(pos, pt)
         elif self.tool is Tool.PENCIL:
             self._current = Pencil([pt], self.color, w)
         elif self.tool is Tool.MARKER:
-            self._current = Marker([pt], self.color, max(1, round(18 * self.scale)))
+            self._current = Marker([pt], self.color, w)
         elif self.tool is Tool.LINE:
             self._current = Line(pt, pt, self.color, w)
         elif self.tool is Tool.ARROW:
@@ -268,15 +344,10 @@ class Editor(QObject):
     # ---------- ferramenta de texto ----------
     def _start_text(self, pos: QPointF, pt: Point) -> None:
         edit = _TextInput(self.ov)
-        f = QFont()
-        f.setPixelSize(TEXT_SIZE)
-        edit.setFont(f)
-        c = QColor(self.color)
-        edit.setStyleSheet(
-            f"QLineEdit {{ background: rgba(255,255,255,40); color: {c.name()}; border: 1px dashed {c.name()}; }}"
-        )
-        edit.move(pos.toPoint())
-        edit.resize(220, TEXT_SIZE + 10)
+        edit.setTextMargins(0, 0, 0, 0)
+        edit.move(pos.toPoint() - QPoint(2, 2))
+        edit.textChanged.connect(lambda _t, e=edit: self._style_text_edit(e))
+        self._style_text_edit(edit)
         edit.committed.connect(self._finish_text)
         edit.cancelled.connect(self._cancel_text)
         edit.editingFinished.connect(self._finish_text)
@@ -284,6 +355,19 @@ class Editor(QObject):
         edit.setFocus()
         self._text_edit = edit
         self._text_origin = pt
+
+    def _style_text_edit(self, edit: QLineEdit) -> None:
+        size = self.sizes[Tool.TEXT]
+        c = QColor(self.color).name()
+        edit.setStyleSheet(
+            f"QLineEdit {{ background: transparent; color: {c}; border: 1px dashed {c};"
+            f" padding: 0px 1px; font-size: {size}px; }}"
+        )
+        f = QFont(edit.font())
+        f.setPixelSize(size)
+        edit.setFont(f)
+        fm = edit.fontMetrics()
+        edit.resize(max(60, fm.horizontalAdvance(edit.text() + "  ") + 8), fm.height() + 6)
 
     def _finish_text(self) -> None:
         edit, self._text_edit = self._text_edit, None
@@ -293,7 +377,7 @@ class Editor(QObject):
         edit.hide()
         edit.deleteLater()
         if self._text_origin is not None:
-            self.stack.add(Text(self._text_origin, text, self.color, round(TEXT_SIZE * self.scale)))
+            self.stack.add(Text(self._text_origin, text, self.color, round(self.sizes[Tool.TEXT] * self.scale)))
             self._committed = None
         self._text_origin = None
         self.ov.setFocus()

@@ -197,6 +197,12 @@ class SelectionOverlay(QWidget):
         if self.editor is not None:
             self.editor.release(e.position())
 
+    def wheelEvent(self, e):
+        if self.editor is not None and self.editor.wheel(e.angleDelta().y(), e.position()):
+            e.accept()
+            return
+        super().wheelEvent(e)
+
     # ---------- teclado ----------
     def keyPressEvent(self, e):
         if self.editor is not None and self.editor.key(e):
