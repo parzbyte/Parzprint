@@ -121,9 +121,9 @@ def test_unknown_format_falls_back_to_png(tmp_path): ... image_format "GIF" -> "
 def test_is_valid_hotkey(): assert is_valid_hotkey("Ctrl+Shift+S"); assert not is_valid_hotkey("S"); assert not is_valid_hotkey("Ctrl+"); assert not is_valid_hotkey("")
 ```
 
-- [ ] **Step 2: Rodar** `pytest tests/test_settings.py -v` — Expected: FAIL (import).
+- [ ] **Step 2: Rodar** `pytest tests/test_settings.py -v`. Expected: FAIL (import).
 - [ ] **Step 3: Implementar `parzprint/settings.py`** com as assinaturas acima. Campos desconhecidos no JSON são ignorados; campos inválidos voltam ao padrão individualmente.
-- [ ] **Step 4: Rodar** — Expected: todos PASS.
+- [ ] **Step 4: Rodar**. Expected: todos PASS.
 - [ ] **Step 5: Commit** `git commit -m "Adiciona leitura e escrita das configurações"`
 
 ---
@@ -152,9 +152,9 @@ def test_render_arrow_paints_head(): out = render(Image.new("RGB",(60,20),"white
 def test_render_marker_is_translucent(): out = render(Image.new("RGB",(40,40),"white"), [Marker([Point(5,20), Point(35,20)], "#FDD835")]); r,g,b = out.getpixel((20,20)); assert (r,g,b) != (255,255,255) and (r,g,b) != (253,216,53)
 ```
 
-- [ ] **Step 2: Rodar** — Expected: FAIL.
+- [ ] **Step 2: Rodar**. Expected: FAIL.
 - [ ] **Step 3: Implementar `parzprint/annotations.py`**. Para `Marker`, desenhar em camada RGBA e compor com `Image.alpha_composite`. Para `Text`, usar `ImageFont.load_default(size)` quando fonte do sistema não for encontrada.
-- [ ] **Step 4: Rodar** — Expected: PASS.
+- [ ] **Step 4: Rodar**. Expected: PASS.
 - [ ] **Step 5: Commit** `git commit -m "Adiciona modelo e renderização das anotações"`
 
 ---
@@ -190,10 +190,10 @@ def test_indra_blocks_relative_to_image():
 def test_indra_wraps_library_errors(monkeypatch): # _run_model levanta RuntimeError -> OcrError
 ```
 
-- [ ] **Step 2: Rodar** — Expected: FAIL.
+- [ ] **Step 2: Rodar**. Expected: FAIL.
 - [ ] **Step 3: Implementar.** Em `IndraEngine`, isolar a chamada à biblioteca em `_run_model(self, image) -> Any` e a conversão em `_to_blocks(self, raw) -> list[TextBlock]`, para que os testes substituam `_run_model`. Usar a classe/método exatos anotados na Task 0.
-- [ ] **Step 4: Rodar** — Expected: PASS.
-- [ ] **Step 5: Verificação manual**: `python -c "from PIL import Image; from parzprint.ocr import get_engine; print(get_engine('indra').recognize(Image.open('<um print seu>')))"` — Expected: lista de `TextBlock` com texto legível.
+- [ ] **Step 4: Rodar**. Expected: PASS.
+- [ ] **Step 5: Verificação manual**: `python -c "from PIL import Image; from parzprint.ocr import get_engine; print(get_engine('indra').recognize(Image.open('<um print seu>')))"`. Expected: lista de `TextBlock` com texto legível.
 - [ ] **Step 6: Commit** `git commit -m "Adiciona interface de OCR e adaptador do Indra"`
 
 ---
@@ -220,7 +220,7 @@ def test_linux_enable_disable(tmp_path): p = tmp_path/"a.desktop"; set_autostart
 @pytest.mark.skipif(sys.platform != "win32", reason="windows") def test_windows_enable_disable(monkeypatch): monkeypatch.setattr(autostart, "_windows_key_path", lambda: r"Software\ParzprintTest\Run"); set_autostart(True, platform="win32", command="C:\\x.exe"); assert is_autostart_enabled(platform="win32"); set_autostart(False, platform="win32"); assert not is_autostart_enabled(platform="win32")
 ```
 
-- [ ] **Step 2: Rodar** — FAIL. **Step 3: Implementar.** **Step 4: Rodar** — PASS.
+- [ ] **Step 2: Rodar**. FAIL. **Step 3: Implementar.** **Step 4: Rodar**. PASS.
 - [ ] **Step 5: Commit** `git commit -m "Adiciona início automático no Windows e Linux"`
 
 ---
@@ -246,7 +246,7 @@ def test_from_qt_key_event(): assert from_qt_key_event({"Ctrl","Shift"}, "S") ==
 def test_is_wayland(monkeypatch): monkeypatch.setattr(sys, "platform", "linux"); assert is_wayland({"XDG_SESSION_TYPE": "wayland"}); assert not is_wayland({"XDG_SESSION_TYPE": "x11"}); monkeypatch.setattr(sys, "platform", "win32"); assert not is_wayland({"XDG_SESSION_TYPE": "wayland"})
 ```
 
-- [ ] **Step 2: Rodar** — FAIL. **Step 3: Implementar.** **Step 4: Rodar** — PASS.
+- [ ] **Step 2: Rodar**. FAIL. **Step 3: Implementar.** **Step 4: Rodar**. PASS.
 - [ ] **Step 5: Commit** `git commit -m "Adiciona registro do atalho global"`
 
 ---
@@ -271,8 +271,8 @@ def test_monitor_for_point(): m = [Monitor(1,0,0,100,100,img), Monitor(2,100,0,1
 def test_crop_uses_monitor_offset(): img = Image.new("RGB",(100,100),"white"); img.putpixel((10,10),(1,2,3)); m = Monitor(2,100,0,100,100,img); out = crop(m,110,10,5,5); assert out.size == (5,5) and out.getpixel((0,0)) == (1,2,3)
 ```
 
-- [ ] **Step 2: Rodar** — FAIL. **Step 3: Implementar.** **Step 4: Rodar** — PASS.
-- [ ] **Step 5: Verificação manual**: `python -c "from parzprint.capture import grab_all; [m.image.save(f'mon{m.index}.png') for m in grab_all()]"` — Expected: um PNG por monitor com o conteúdo da tela. Apagar os PNGs.
+- [ ] **Step 2: Rodar**. FAIL. **Step 3: Implementar.** **Step 4: Rodar**. PASS.
+- [ ] **Step 5: Verificação manual**: `python -c "from parzprint.capture import grab_all; [m.image.save(f'mon{m.index}.png') for m in grab_all()]"`. Expected: um PNG por monitor com o conteúdo da tela. Apagar os PNGs.
 - [ ] **Step 6: Commit** `git commit -m "Adiciona captura dos monitores"`
 
 ---
@@ -298,7 +298,7 @@ def test_place_toolbars_prefers_right_and_below(): ...assert side.x() == sel.rig
 def test_place_toolbars_flips_when_near_edge(): ...seleção colada à direita e embaixo da tela → side à esquerda, bottom acima
 ```
 
-- [ ] **Step 2: Rodar** — FAIL. **Step 3: Implementar `geometry.py`.** **Step 4: Rodar** — PASS.
+- [ ] **Step 2: Rodar**. FAIL. **Step 3: Implementar `geometry.py`.** **Step 4: Rodar**. PASS.
 - [ ] **Step 5: Implementar `overlay.py`** (sem testes automáticos). Pintura em `paintEvent`: foto, retângulo escuro com buraco na seleção, borda tracejada, rótulo de tamanho, alças.
 - [ ] **Step 6: Verificação manual**: script temporário que cria `QApplication`, `CaptureSession().start()` e imprime o `rect` recebido. Arrastar em cada direção, ajustar pela alça, `Esc`. Expected: retângulo impresso bate com a área, `Esc` fecha tudo, funciona no segundo monitor.
 - [ ] **Step 7: Commit** `git commit -m "Adiciona overlay de seleção de área"`
@@ -348,7 +348,7 @@ def test_default_filename(): assert default_filename(datetime(2026,11,7,19,53,2)
 def test_save_png_and_jpg(tmp_path): img = Image.new("RGBA",(4,4),(255,0,0,255)); save_image(img, tmp_path/"a.png","PNG"); save_image(img, tmp_path/"a.jpg","JPG"); assert Image.open(tmp_path/"a.png").size == (4,4); assert Image.open(tmp_path/"a.jpg").mode == "RGB"
 ```
 
-- [ ] **Step 2: Rodar** — FAIL. **Step 3: Implementar.** **Step 4: Rodar** — PASS.
+- [ ] **Step 2: Rodar**. FAIL. **Step 3: Implementar.** **Step 4: Rodar**. PASS.
 - [ ] **Step 5: Ligar no editor**: Salvar → `ask_save_path` + `save_image` + fechar (erro de escrita → `QMessageBox.critical` e permanece); Copiar e `Enter` → `copy_image` + fechar; `Ctrl+S` → salvar; Imprimir → `print_image`, não fecha; Fechar → fecha.
 - [ ] **Step 6: Verificação manual**: salvar PNG e JPG, copiar e colar no Paint, imprimir em "Microsoft Print to PDF", pasta sem permissão mostra erro e mantém a captura.
 - [ ] **Step 7: Commit** `git commit -m "Adiciona salvar, copiar e imprimir a captura"`
@@ -379,7 +379,7 @@ def test_drag_selects_intersecting_in_reading_order(): m = TextSelectionModel(B)
 def test_all_text(): assert TextSelectionModel(B).all_text() == "a\nb\nc"
 ```
 
-- [ ] **Step 2: Rodar** — FAIL. **Step 3: Implementar `TextSelectionModel`.** **Step 4: Rodar** — PASS.
+- [ ] **Step 2: Rodar**. FAIL. **Step 3: Implementar `TextSelectionModel`.** **Step 4: Rodar**. PASS.
 - [ ] **Step 5: Implementar `OcrWorker`, `TextPanel` e a integração no `Editor`/overlay.**
 - [ ] **Step 6: Verificação manual**: botão Texto mostra carregando, painel abre com o texto; hover nos dois sentidos destaca; arrastar sobre a imagem seleciona e "Copiar seleção" copia só aquilo; "Copiar tudo" copia tudo; fechar painel reativa as ferramentas e as anotações seguem lá; reabrir não roda o OCR de novo; imagem sem texto mostra "Nenhum texto encontrado"; simular erro (engine `"x"` nas settings) mostra erro e Tentar de novo.
 - [ ] **Step 7: Commit** `git commit -m "Adiciona painel de texto com OCR do Indra"`
@@ -402,7 +402,7 @@ def test_all_text(): assert TextSelectionModel(B).all_text() == "a\nb\nc"
   - `main(argv=None) -> int` em `__main__.py`: se outra instância existe, `send(parse_args)` e retorna 0; senão sobe `App` e, se o argumento for `capture`/`settings`, executa após iniciar.
 
 - [ ] **Step 1: Teste** `test_parse_args`: `parse_args(["--capture"]) == "capture"`, `["--settings"] == "settings"`, `[] == "none"`.
-- [ ] **Step 2: Rodar** — FAIL. **Step 3: Implementar `parse_args` e os módulos.** **Step 4: Rodar** — PASS.
+- [ ] **Step 2: Rodar**. FAIL. **Step 3: Implementar `parse_args` e os módulos.** **Step 4: Rodar**. PASS.
 - [ ] **Step 5: Verificação manual**: `python -m parzprint` sobe só a bandeja; atalho padrão captura; segunda execução `python -m parzprint --capture` dispara captura na primeira e sai; mudar o atalho nas configurações passa a valer na hora; ligar Iniciar com o sistema cria a chave no registro (`reg query HKCU\Software\Microsoft\Windows\CurrentVersion\Run`); Sair encerra.
 - [ ] **Step 6: Commit** `git commit -m "Adiciona bandeja, configurações e instância única"`
 
@@ -417,7 +417,7 @@ def test_all_text(): assert TextSelectionModel(B).all_text() == "a\nb\nc"
 - Produces: `dist/Parzprint/Parzprint.exe` (Windows) ou `dist/Parzprint/Parzprint` (Linux).
 
 - [ ] **Step 1: Escrever `build.py`** que chama `PyInstaller.__main__.run` com: `--name Parzprint --windowed --onedir --icon assets/icon.ico --add-data assets;assets` (separador `:` no Linux), entrada `parzprint/__main__.py`, `--collect-all indra` (nome do pacote conforme Task 0) e `--collect-all onnxruntime`.
-- [ ] **Step 2: Rodar** `python build.py` — Expected: termina sem erro e gera `dist/Parzprint/`.
+- [ ] **Step 2: Rodar** `python build.py`. Expected: termina sem erro e gera `dist/Parzprint/`.
 - [ ] **Step 3: Verificação manual** do executável: abre na bandeja, captura, OCR funciona (primeira vez baixa o modelo), autostart aponta para o `.exe` (`executable_command()`), fechar e reabrir mantém configurações.
 - [ ] **Step 4: README**: comandos de build e nota de que o Linux deve ser gerado numa máquina Linux.
 - [ ] **Step 5: Commit** `git commit -m "Adiciona geração do executável com PyInstaller"`

@@ -1,8 +1,8 @@
 # Parzprint
 
-Captura de tela para Windows e Linux, no estilo do Lightshot, com anotações e um botão
-**Texto** que extrai o texto da imagem com o [Indra OCR](https://github.com/datalab-to/indra),
-rodando localmente, sem conta e sem API.
+Captura de tela para Windows e Linux no estilo do Lightshot. Dá para anotar a imagem e,
+pelo botão Texto, copiar o texto que aparece nela. O texto é lido pelo
+[Indra OCR](https://github.com/datalab-to/indra) no próprio computador, sem conta e sem API.
 
 ## Instalar
 
@@ -29,24 +29,25 @@ pytest
 python build.py
 ```
 
-Feche o Parzprint antes (bandeja, Sair): com ele aberto, o Windows trava os arquivos de `dist/`.
+Feche o Parzprint pela bandeja (Sair) antes de gerar. Com ele aberto, o Windows trava os
+arquivos de `dist/`.
 
-O resultado fica em `dist/Parzprint/` (`Parzprint.exe` no Windows). Copie a pasta inteira
-para onde quiser e abra o executável: ele fica na bandeja e, se a opção estiver ligada,
-passa a iniciar com o sistema a partir desse local.
+O resultado fica em `dist/Parzprint/`. Copie a pasta inteira, não só o `Parzprint.exe`, e
+abra o executável. Ele fica na bandeja e, com a opção ligada, passa a iniciar com o sistema
+a partir da pasta onde está.
 
-O pacote do Linux precisa ser gerado numa máquina Linux. O modelo do Indra (cerca de
-76 MB) não vai no pacote: ele é baixado na primeira vez que o botão **Texto** é usado.
+O modelo do Indra (cerca de 73 MB) vai dentro do pacote, então o botão Texto funciona sem
+internet. O pacote do Linux precisa ser gerado numa máquina Linux.
 
 ## Uso
 
-- **Atalho padrão:** `Ctrl+Shift+S` (muda em Configurações, no menu da bandeja).
-- `parzprint --capture` abre a captura na instância já aberta. No Wayland, cadastre esse
-  comando no atalho de teclado do sistema, porque lá o atalho global não funciona.
+- O atalho padrão é `Ctrl+Shift+S`. Ele muda em Configurações, no menu da bandeja.
+- `parzprint --capture` abre a captura na instância que já está aberta. No Wayland o atalho
+  global não funciona, então cadastre esse comando no atalho de teclado do sistema.
 - `parzprint --settings` abre as configurações.
-- No editor: `Ctrl+Z` desfaz, `Ctrl+C` ou `Enter` copia a imagem, `Ctrl+S` salva, `Esc` fecha.
-- A roda do mouse muda o tamanho da ferramenta escolhida (lápis, linha, seta, retângulo,
-  marca-texto e texto). O botão de cor abre a janela Cor do Windows.
-- No botão **Texto**: arraste sobre o texto da imagem para selecionar um trecho, clique duas
-  vezes numa palavra para pegá-la e use o botão **Copiar** que aparece ao lado. `Ctrl+A`
-  seleciona tudo e `Ctrl+C` copia a seleção.
+- No editor, `Ctrl+Z` desfaz, `Ctrl+C` ou `Enter` copia a imagem, `Ctrl+S` salva e `Esc` fecha.
+- A roda do mouse muda o tamanho da ferramenta escolhida. O botão de cor abre a janela Cor
+  do Windows.
+- Com o painel de texto aberto, arraste sobre o texto da imagem para selecionar um trecho ou
+  clique duas vezes numa palavra. O botão Copiar aparece ao lado da seleção. `Ctrl+A`
+  seleciona tudo e `Ctrl+C` copia o que estiver selecionado.

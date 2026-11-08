@@ -63,7 +63,7 @@ class SettingsWindow(QDialog):
 
     def __init__(self, settings: Settings, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setWindowTitle("Parzprint — Configurações")
+        self.setWindowTitle("Configurações do Parzprint")
         self.setWindowIcon(app_icon())
         self.setMinimumWidth(460)
         self._settings = settings

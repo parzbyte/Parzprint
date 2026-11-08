@@ -33,7 +33,7 @@ class Tray(QSystemTrayIcon):
         self.activated.connect(self._on_activated)
 
     def set_hotkey_hint(self, hotkey: str | None) -> None:
-        self.setToolTip(f"Parzprint — {hotkey}" if hotkey else "Parzprint")
+        self.setToolTip(f"Parzprint ({hotkey})" if hotkey else "Parzprint")
 
     def _on_activated(self, reason) -> None:
         if reason in (QSystemTrayIcon.ActivationReason.DoubleClick, QSystemTrayIcon.ActivationReason.Trigger):

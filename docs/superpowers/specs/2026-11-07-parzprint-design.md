@@ -1,4 +1,4 @@
-# Parzprint — especificação de design
+# Parzprint: especificação de design
 
 Data: 2026-11-07
 Status: aprovado em conversa, aguardando revisão do arquivo

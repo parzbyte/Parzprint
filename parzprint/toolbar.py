@@ -194,7 +194,7 @@ class BottomToolbar(_Bar):
             ("save", "Salvar (Ctrl+S)", self.save_requested),
             ("copy", "Copiar imagem (Ctrl+C)", self.copy_requested),
             ("print", "Imprimir", self.print_requested),
-            ("ocr", "Texto: extrair o texto da imagem", self.text_requested),
+            ("ocr", "Ler o texto da imagem", self.text_requested),
             ("close", "Fechar (Esc)", self.close_requested),
         ]
         self.buttons: dict[str, QToolButton] = {}
