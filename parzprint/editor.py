@@ -454,8 +454,8 @@ class Editor(QObject):
             return
         self.panel = TextPanel(self.ov)
         self.panel.hide()
-        self.panel.copy_all.connect(copy_text)
-        self.panel.copy_selection.connect(copy_text)
+        self.panel.copy_all.connect(self._copy_text_and_close)
+        self.panel.copy_selection.connect(self._copy_text_and_close)
         self.panel.closed.connect(self.close_panel)
         self.panel.retry.connect(self._retry)
         self.panel.selection_changed.connect(self._on_panel_selection)
@@ -569,13 +569,17 @@ class Editor(QObject):
 
     def _chip_copy(self) -> None:
         self._copy_selected_text()
-        self.copy_chip.setText("Copiado ✓")
-        self.copy_chip.adjustSize()
-        QTimer.singleShot(900, self.copy_chip.hide)
 
     def _copy_selected_text(self) -> None:
         if self.layout is not None and self.layout.has_selection():
-            copy_text(self.layout.selected_text())
+            self._copy_text_and_close(self.layout.selected_text())
+
+    def _copy_text_and_close(self, text: str) -> None:
+        """Copiou o texto: a captura já cumpriu o papel, então fecha tudo (como Copiar imagem)."""
+        if not text:
+            return
+        copy_text(text)
+        self.close()
 
     # ---------- ações ----------
     def save(self) -> bool:

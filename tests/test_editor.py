@@ -236,3 +236,41 @@ def test_insertion_cursor_while_dragging_text(qapp):
     _move_mouse(ov, 120, 86, Qt.MouseButton.LeftButton)
     assert ov.cursor().shape() == Qt.CursorShape.IBeamCursor
     ov.close()
+
+
+def _clipboard():
+    from PySide6.QtWidgets import QApplication
+
+    return QApplication.clipboard().text()
+
+
+def test_copy_all_from_panel_closes_capture(qapp):
+    ov, ed, cancelled = open_text_mode(qapp)
+    ed.panel.copy_all_button.click()
+    assert _clipboard() == "olá mundo\nsegunda"
+    assert cancelled == [True]
+
+
+def test_copy_selection_from_panel_closes_capture(qapp):
+    ov, ed, cancelled = open_text_mode(qapp)
+    ed.layout.select(4, 9)
+    ed._after_selection()
+    ed.panel.copy_sel_button.click()
+    assert _clipboard() == "mundo"
+    assert cancelled == [True]
+
+
+def test_floating_copy_button_closes_capture(qapp):
+    ov, ed, cancelled = open_text_mode(qapp)
+    ed.double_click(QPointF(146, 66))
+    ed.copy_chip.click()
+    assert _clipboard() == "mundo"
+    assert cancelled == [True]
+
+
+def test_ctrl_c_with_text_selected_closes_capture(qapp):
+    ov, ed, cancelled = open_text_mode(qapp)
+    ed.layout.select_all()
+    QTest.keyClick(ov, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+    assert _clipboard() == "olá mundo\nsegunda"
+    assert cancelled == [True]
