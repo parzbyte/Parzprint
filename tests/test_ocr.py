@@ -111,3 +111,48 @@ def test_indra_runs_upright_only(monkeypatch):
     monkeypatch.setattr(eng, "_load", lambda: FakeConv())
     eng.recognize(Image.new("RGB", (10, 10)))
     assert seen["turn"] is False
+
+
+def _fake_bundle(tmp_path):
+    d = tmp_path / "indra"
+    d.mkdir()
+    for f in ("det.onnx", "rec.onnx", "order.onnx", "meta.json"):
+        (d / f).write_bytes(b"x")
+    return d
+
+
+def test_bundled_model_dir_found(monkeypatch, tmp_path):
+    import parzprint.ocr.indra as indra_mod
+
+    d = _fake_bundle(tmp_path)
+    monkeypatch.setattr(indra_mod, "BUNDLED_MODEL_DIR", d)
+    assert indra_mod.bundled_model_dir() == d
+    monkeypatch.setattr(indra_mod, "BUNDLED_MODEL_DIR", tmp_path / "nada")
+    assert indra_mod.bundled_model_dir() is None
+
+
+def test_bundled_model_counts_as_cached_without_network(monkeypatch, tmp_path):
+    import huggingface_hub
+
+    import parzprint.ocr.indra as indra_mod
+
+    monkeypatch.setattr(indra_mod, "BUNDLED_MODEL_DIR", _fake_bundle(tmp_path))
+
+    def no_network(*a, **k):
+        raise AssertionError("não deveria consultar o Hugging Face")
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", no_network)
+    assert indra_mod.is_model_cached()
+
+
+def test_engine_loads_from_bundled_dir(monkeypatch, tmp_path):
+    import indra_ocr
+
+    import parzprint.ocr.indra as indra_mod
+
+    d = _fake_bundle(tmp_path)
+    monkeypatch.setattr(indra_mod, "BUNDLED_MODEL_DIR", d)
+    seen = {}
+    monkeypatch.setattr(indra_ocr, "load", lambda path=None, **kw: seen.setdefault("path", path) or object())
+    IndraEngine()._load()
+    assert seen["path"] == str(d)

@@ -2,7 +2,8 @@
 
 Saída: dist/Parzprint/Parzprint.exe (Windows) ou dist/Parzprint/Parzprint (Linux).
 Gere o pacote de cada sistema na própria máquina desse sistema.
-O modelo do Indra não vai no pacote: é baixado na primeira vez que o botão Texto é usado.
+O modelo do Indra (cerca de 73 MB) vai dentro do pacote, então o botão Texto
+funciona sem internet desde o primeiro uso.
 """
 
 import os
@@ -18,6 +19,9 @@ SEP = os.pathsep  # ";" no Windows, ":" no Linux
 def main() -> None:
     # python build.py [pasta-de-saida]   (padrão: dist/)
     extra = ["--distpath", sys.argv[1], "--workpath", str(Path(sys.argv[1]) / "build")] if len(sys.argv) > 1 else []
+    from indra_ocr.models import model_dir
+
+    model = model_dir()  # baixa do Hugging Face na primeira vez, depois usa o cache
     args = [
         str(ROOT / "run_parzprint.py"),
         "--name", "Parzprint",
@@ -26,6 +30,7 @@ def main() -> None:
         "--noconfirm",
         "--clean",
         "--add-data", f"{ROOT / 'parzprint' / 'assets'}{SEP}parzprint/assets",
+        "--add-data", f"{model}{SEP}parzprint/models/indra",
         "--collect-all", "indra_ocr",
         "--collect-all", "onnxruntime",
         "--collect-submodules", "pynput",

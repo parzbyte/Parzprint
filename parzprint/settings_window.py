@@ -97,10 +97,6 @@ class SettingsWindow(QDialog):
         self.image_format.setCurrentText(settings.image_format)
         form.addRow("Formato", self.image_format)
 
-        self.ocr_engine = QComboBox(self)
-        self.ocr_engine.addItem("Indra", "indra")
-        form.addRow("Motor de OCR", self.ocr_engine)
-
         buttons = QDialogButtonBox(self)
         buttons.addButton("Salvar", QDialogButtonBox.ButtonRole.AcceptRole)
         buttons.addButton("Cancelar", QDialogButtonBox.ButtonRole.RejectRole)
@@ -123,7 +119,6 @@ class SettingsWindow(QDialog):
             autostart=self.autostart.isChecked(),
             save_dir=self.save_dir.text().strip() or self._settings.save_dir,
             image_format=self.image_format.currentText(),
-            ocr_engine=self.ocr_engine.currentData(),
         )
 
     def _save(self) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -10,9 +11,21 @@ from PIL import Image
 
 from .base import OcrError, TextBlock, reading_order
 
+# Modelo embutido no executável pelo build.py (parzprint/models/indra dentro do pacote).
+# Rodando a partir do código, a pasta não existe e o Indra usa o próprio cache/download.
+BUNDLED_MODEL_DIR = Path(__file__).resolve().parent.parent / "models" / "indra"
+_REQUIRED = ("det.onnx", "rec.onnx", "meta.json")
+
+
+def bundled_model_dir() -> Path | None:
+    d = BUNDLED_MODEL_DIR
+    return d if all((d / f).is_file() for f in _REQUIRED) else None
+
 
 def is_model_cached() -> bool:
-    """True se o modelo do Indra já está no cache local (nenhum download será feito)."""
+    """True se o modelo do Indra já está disponível sem download (embutido ou em cache)."""
+    if bundled_model_dir() is not None:
+        return True
     try:
         from huggingface_hub import snapshot_download
         from indra_ocr.models import HF_REPO, HF_REVISION, MATH_FILES
@@ -43,7 +56,10 @@ class IndraEngine:
             if self._converter is None:
                 import indra_ocr
 
-                self._converter = indra_ocr.load(threads=self._threads, mode="ocr")
+                bundled = bundled_model_dir()
+                self._converter = indra_ocr.load(
+                    path=str(bundled) if bundled else None, threads=self._threads, mode="ocr"
+                )
             return self._converter
 
     def _run_model(self, gray: np.ndarray) -> Any:
