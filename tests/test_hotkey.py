@@ -4,7 +4,10 @@ import time
 
 import pytest
 
-from parzprint.hotkey import GlobalHotkey, HotkeyError, from_qt_key_event, is_wayland, to_pynput
+from parzprint.hotkey import (
+    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, GlobalHotkey, HotkeyError, from_qt_key_event, is_wayland,
+    to_pynput, to_win32,
+)
 
 
 def test_to_pynput():
@@ -77,3 +80,34 @@ def test_global_hotkey_fires_on_keys():
         assert fired.wait(3)
     finally:
         hk.stop()
+
+
+def test_to_win32():
+    assert to_win32("Ctrl+Alt+S") == (MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x53)
+    assert to_win32("Ctrl+Shift+S") == (MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x53)
+    assert to_win32("Win+Print") == (MOD_WIN | MOD_NOREPEAT, 0x2C)
+    assert to_win32("Alt+F2") == (MOD_ALT | MOD_NOREPEAT, 0x71)
+    assert to_win32("Ctrl+Alt+1") == (MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x31)
+    assert to_win32("Ctrl+Del") == (MOD_CONTROL | MOD_NOREPEAT, 0x2E)
+
+
+def test_to_win32_invalid_raises():
+    with pytest.raises(HotkeyError):
+        to_win32("Ctrl+")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="windows")
+def test_windows_hotkey_is_exclusive():
+    # registrado pelo Windows: uma segunda inscrição da mesma combinação é recusada,
+    # o que mostra que a combinação passa a ser só deste programa
+    a = GlobalHotkey("Ctrl+Alt+Shift+F10", lambda: None)
+    a.start()
+    try:
+        b = GlobalHotkey("Ctrl+Alt+Shift+F10", lambda: None)
+        with pytest.raises(HotkeyError, match="em uso"):
+            b.start()
+    finally:
+        a.stop()
+    c = GlobalHotkey("Ctrl+Alt+Shift+F10", lambda: None)
+    c.start()  # depois do stop, a combinação fica livre de novo
+    c.stop()

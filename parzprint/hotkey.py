@@ -1,9 +1,15 @@
-"""Atalho global de captura (pynput). Em Wayland não há atalho global para apps comuns."""
+"""Atalho global de captura.
+
+No Windows o atalho é registrado no próprio sistema (RegisterHotKey, como faz o Lightshot):
+a combinação vai só para o Parzprint e não chega ao programa em foco. No Linux (X11) usa o
+pynput, que só escuta. Em Wayland não há atalho global para apps comuns.
+"""
 
 from __future__ import annotations
 
 import os
 import sys
+import threading
 from collections.abc import Callable, Mapping
 
 from .settings import MODIFIERS, is_valid_hotkey
@@ -26,6 +32,17 @@ _SPECIAL = {
 }
 
 
+# modificadores do RegisterHotKey
+MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, MOD_NOREPEAT = 0x1, 0x2, 0x4, 0x8, 0x4000
+_WIN_MODS = {"Ctrl": MOD_CONTROL, "Shift": MOD_SHIFT, "Alt": MOD_ALT, "Win": MOD_WIN}
+_WIN_VK = {
+    "Print": 0x2C, "Space": 0x20, "Esc": 0x1B, "Tab": 0x09, "Home": 0x24, "End": 0x23,
+    "Insert": 0x2D, "Ins": 0x2D, "Delete": 0x2E, "Del": 0x2E, "PgUp": 0x21, "PgDown": 0x22,
+    "Pause": 0x13,
+}
+ERROR_HOTKEY_ALREADY_REGISTERED = 1409
+
+
 class HotkeyError(Exception):
     """Atalho inválido ou impossível de registrar."""
 
@@ -43,6 +60,85 @@ def to_pynput(hotkey: str) -> str:
     else:
         raise HotkeyError(f"Tecla não suportada: {key!r}")
     return "+".join([_MOD_TO_PYNPUT[m] for m in mods] + [k])
+
+
+def to_win32(hotkey: str) -> tuple[int, int]:
+    """"Ctrl+Alt+S" -> (modificadores, código virtual da tecla) para o RegisterHotKey."""
+    if not is_valid_hotkey(hotkey):
+        raise HotkeyError(f"Atalho inválido: {hotkey!r}")
+    *mods, key = hotkey.split("+")
+    flags = MOD_NOREPEAT
+    for m in mods:
+        flags |= _WIN_MODS[m]
+    if key in _WIN_VK:
+        vk = _WIN_VK[key]
+    elif len(key) > 1 and key[0] in "Ff" and key[1:].isdigit() and 1 <= int(key[1:]) <= 24:
+        vk = 0x70 + int(key[1:]) - 1
+    elif len(key) == 1 and key.upper().isascii() and key.upper().isalnum():
+        vk = ord(key.upper())
+    elif len(key) == 1 and sys.platform == "win32":
+        import ctypes
+
+        code = ctypes.windll.user32.VkKeyScanW(ord(key))
+        if code == -1:
+            raise HotkeyError(f"Tecla não suportada: {key!r}")
+        vk = code & 0xFF
+    else:
+        raise HotkeyError(f"Tecla não suportada: {key!r}")
+    return flags, vk
+
+
+class _WindowsHotkey(threading.Thread):
+    """Registra o atalho no Windows numa thread com o próprio laço de mensagens."""
+
+    WM_HOTKEY, WM_QUIT = 0x0312, 0x0012
+
+    def __init__(self, hotkey: str, callback: Callable[[], None]):
+        super().__init__(name="parzprint-hotkey", daemon=True)
+        self._mods, self._vk = to_win32(hotkey)
+        self._hotkey = hotkey
+        self._callback = callback
+        self._ready = threading.Event()
+        self._error: str | None = None
+        self._tid = 0
+
+    def run(self) -> None:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32")
+        self._tid = kernel32.GetCurrentThreadId()
+        if not user32.RegisterHotKey(None, 1, self._mods, self._vk):
+            err = ctypes.get_last_error()
+            if err == ERROR_HOTKEY_ALREADY_REGISTERED:
+                self._error = f"o atalho {self._hotkey} já está em uso por outro programa"
+            else:
+                self._error = f"o Windows recusou o atalho {self._hotkey} (erro {err})"
+            self._ready.set()
+            return
+        self._ready.set()
+        msg = wintypes.MSG()
+        try:
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                if msg.message == self.WM_HOTKEY:
+                    self._callback()
+        finally:
+            user32.UnregisterHotKey(None, 1)
+
+    def start_and_wait(self) -> None:
+        self.start()
+        if not self._ready.wait(3):
+            raise HotkeyError(f"Não foi possível registrar o atalho {self._hotkey}: sem resposta do Windows")
+        if self._error:
+            raise HotkeyError(f"Não foi possível registrar: {self._error}")
+
+    def stop(self) -> None:
+        import ctypes
+
+        if self.is_alive() and self._tid:
+            ctypes.windll.user32.PostThreadMessageW(self._tid, self.WM_QUIT, 0, 0)
+            self.join(2)
 
 
 def from_qt_key_event(modifiers: set[str], key: str) -> str | None:
@@ -68,6 +164,11 @@ class GlobalHotkey:
         self._listener = None
 
     def start(self) -> None:
+        if sys.platform == "win32":
+            win = _WindowsHotkey(self.hotkey, self._callback)
+            win.start_and_wait()
+            self._listener = win
+            return
         from pynput import keyboard
 
         combo = to_pynput(self.hotkey)
@@ -96,7 +197,7 @@ class GlobalHotkey:
             self._listener = None
 
     def rebind(self, hotkey: str) -> None:
-        to_pynput(hotkey)  # valida antes de derrubar o atual
+        to_win32(hotkey) if sys.platform == "win32" else to_pynput(hotkey)  # valida antes de trocar
         self.stop()
         self.hotkey = hotkey
         self.start()
