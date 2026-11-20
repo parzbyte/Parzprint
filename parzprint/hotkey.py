@@ -177,6 +177,17 @@ def is_wayland(env: Mapping[str, str] = os.environ) -> bool:
     return env.get("XDG_SESSION_TYPE", "").lower() == "wayland" or bool(env.get("WAYLAND_DISPLAY"))
 
 
+READY_TIMEOUT = 3.0
+
+
+def _wait_ready(listener, timeout: float) -> bool:
+    """True se o listener ficou pronto em até ``timeout`` segundos e continua vivo."""
+    waiter = threading.Thread(target=listener.wait, daemon=True)
+    waiter.start()
+    waiter.join(timeout)
+    return not waiter.is_alive() and listener.is_alive()
+
+
 class GlobalHotkey:
     def __init__(self, hotkey: str, callback: Callable[[], None]):
         self.hotkey = hotkey
@@ -207,10 +218,13 @@ class GlobalHotkey:
             listener = keyboard.Listener(on_press=on_press, on_release=on_release)
             listener.daemon = True
             listener.start()
-            # no Linux, parar um listener que ainda não terminou de abrir trava a conexão com o X
-            listener.wait()
         except Exception as e:  # noqa: BLE001
             raise HotkeyError(f"Não foi possível registrar o atalho {self.hotkey}: {e}") from e
+        # parar um listener que ainda não abriu trava a conexão com o X; e se o X recusar a
+        # conexão, a thread morre e nunca fica pronta: espera com limite em vez de travar o app
+        if not _wait_ready(listener, READY_TIMEOUT):
+            listener.stop()
+            raise HotkeyError(f"Não foi possível ligar o atalho {self.hotkey}: sem resposta do sistema")
         self._listener = listener
 
     def stop(self) -> None:

@@ -40,6 +40,7 @@ def test_is_wayland(monkeypatch):
     assert not is_wayland({"XDG_SESSION_TYPE": "wayland"})
 
 
+@pytest.mark.skipif(sys.platform.startswith("linux"), reason="no Linux o pynput precisa de uma sessão X de verdade")
 def test_global_hotkey_start_stop_rebind():
     hk = GlobalHotkey("Ctrl+Shift+F12", lambda: None)
     hk.start()
@@ -111,3 +112,29 @@ def test_windows_hotkey_is_exclusive():
     c = GlobalHotkey("Ctrl+Alt+Shift+F10", lambda: None)
     c.start()  # depois do stop, a combinação fica livre de novo
     c.stop()
+
+
+def test_listener_that_never_gets_ready_does_not_hang():
+    import threading
+
+    from parzprint.hotkey import _wait_ready
+
+    class Stuck:
+        def wait(self):
+            threading.Event().wait()  # nunca fica pronto (thread do listener morreu)
+
+        def is_alive(self):
+            return False
+
+    t = time.perf_counter()
+    assert _wait_ready(Stuck(), 0.3) is False
+    assert time.perf_counter() - t < 2
+
+    class Ready:
+        def wait(self):
+            return None
+
+        def is_alive(self):
+            return True
+
+    assert _wait_ready(Ready(), 0.3) is True

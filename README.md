@@ -94,7 +94,9 @@ confira a assinatura de origem (abaixo).
 
 Baixe o `Parzprint-linux.tar.gz`, extraia e rode `./Parzprint/Parzprint`. No Linux o print, as
 anotações e o texto da imagem estão disponíveis; a gravação de tela ainda é só do Windows.
-A versão do Linux é gerada automaticamente e ainda não foi testada por uma pessoa.
+A versão do Linux é gerada e testada automaticamente, mas ainda não foi usada por uma pessoa num
+Linux de verdade. O atalho global precisa de uma sessão X11; no Wayland, cadastre o comando
+`parzprint --capture` no atalho de teclado do sistema.
 
 ### Conferir se o arquivo é o original
 
