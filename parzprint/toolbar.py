@@ -50,12 +50,20 @@ _SVG = {
     "print": '<path d="M7 9V3h10v6"/><path d="M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/>',
     "ocr": '<path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7.5 8.5h9"/><path d="M12 8.5v7"/>',
     "close": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    "clear": '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5"/><path d="M14 11v5"/>',
+    "record": '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>',
+    "pause": '<path d="M9 5v14"/><path d="M15 5v14"/>',
+    "play": '<path d="M7 5v14l11-7z"/>',
+    "stop": '<rect x="6" y="6" width="12" height="12" rx="1.5"/>',
+    "mic": '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>',
+    "speaker": '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/>',
+    "draw": '<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/><path d="M3 21h18"/>',
 }
 
 
 def _svg(name: str, color: str) -> bytes:
     return (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" color="{color}" '
         f'stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
         f"{_SVG[name]}</svg>"
     ).encode()
@@ -125,7 +133,9 @@ class SideToolbar(_Bar):
         Tool.RECT: "rect", Tool.MARKER: "marker", Tool.TEXT: "text",
     }
 
-    def __init__(self, parent: QWidget):
+    clear_requested = Signal()
+
+    def __init__(self, parent: QWidget | None, with_clear: bool = False):
         super().__init__(parent)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(3, 3, 3, 3)
@@ -144,6 +154,11 @@ class SideToolbar(_Bar):
         self.undo_button = _button(self, make_icon("undo"), "Desfazer (Ctrl+Z)")
         self.undo_button.clicked.connect(self.undo_requested)
         lay.addWidget(self.undo_button)
+        self.clear_button = None
+        if with_clear:
+            self.clear_button = _button(self, make_icon("clear"), "Limpar todos os desenhos")
+            self.clear_button.clicked.connect(self.clear_requested)
+            lay.addWidget(self.clear_button)
         self.adjustSize()
 
     def _on_tool(self, tool: Tool, checked: bool) -> None:

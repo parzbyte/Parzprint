@@ -15,7 +15,7 @@ from PySide6.QtGui import QColor, QFont, QKeySequence, QPainter, QPen, QRegion
 from PySide6.QtWidgets import QLineEdit, QMessageBox, QPushButton
 
 from .annotations import (
-    DEFAULT_COLOR, AnnotationStack, Arrow, Line, Marker, Pencil, Point, Rect, Text, paint_annotation, render,
+    DEFAULT_COLOR, AnnotationStack, Point, Text, paint_annotation, render,
 )
 from .capture import crop
 from .export import ask_save_path, copy_image, copy_text, print_image, save_image
@@ -24,16 +24,10 @@ from .ocr import OcrEngine, get_engine
 from .ocr_worker import OcrWorker, progress_label
 from .qtutil import pil_to_qpixmap
 from .settings import Settings
+from .drawing import DEFAULT_SIZES, TextInput, extend_shape, is_empty, new_shape, step_size
 from .textpanel import TextLayout, TextPanel
 from .toolbar import BottomToolbar, SideToolbar, Tool
 
-TEXT_SIZE = 20
-# tamanho inicial de cada ferramenta (pixels lógicos; para Texto, tamanho da fonte)
-DEFAULT_SIZES = {
-    Tool.PENCIL: 3, Tool.LINE: 3, Tool.ARROW: 4, Tool.RECT: 3, Tool.MARKER: 16, Tool.TEXT: TEXT_SIZE,
-}
-SIZE_LIMITS = {Tool.MARKER: (6, 60), Tool.TEXT: (10, 72)}  # demais: 1 a 30
-SIZE_STEPS = {Tool.MARKER: 2, Tool.TEXT: 2}  # demais: 1
 HUD_MS = 900
 PANEL_SIZE = QSize(420, 440)
 LENS_DIM = QColor(0, 0, 0, 110)  # escurece a imagem fora do texto, como no Google Lens
@@ -43,25 +37,6 @@ QPushButton { background: #1E88E5; color: white; border: none; border-radius: 15
               padding: 6px 16px; font-weight: bold; }
 QPushButton:hover { background: #2196F3; }
 """
-
-
-class _TextInput(QLineEdit):
-    """Campo da ferramenta Texto: Enter confirma e Esc cancela, sem repassar a tecla
-    para o overlay (onde Enter copiaria a imagem e Esc fecharia a captura)."""
-
-    committed = Signal()
-    cancelled = Signal()
-
-    def keyPressEvent(self, e):
-        if e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            e.accept()
-            self.committed.emit()
-            return
-        if e.key() == Qt.Key.Key_Escape:
-            e.accept()
-            self.cancelled.emit()
-            return
-        super().keyPressEvent(e)
 
 
 class Editor(QObject):
@@ -197,9 +172,7 @@ class Editor(QObject):
         tool = Tool.TEXT if self._text_edit is not None else self.tool
         if tool is None or self.text_mode or delta == 0:
             return False
-        lo, hi = SIZE_LIMITS.get(tool, (1, 30))
-        step = SIZE_STEPS.get(tool, 1) * (1 if delta > 0 else -1)
-        self.sizes[tool] = max(lo, min(hi, self.sizes[tool] + step))
+        self.sizes[tool] = step_size(tool, self.sizes[tool], delta)
         if self._text_edit is not None:
             self._style_text_edit(self._text_edit)
         if pos is not None:
@@ -301,16 +274,8 @@ class Editor(QObject):
         w = max(1, round(self.sizes.get(self.tool, 3) * self.scale))
         if self.tool is Tool.TEXT:
             self._start_text(pos, pt)
-        elif self.tool is Tool.PENCIL:
-            self._current = Pencil([pt], self.color, w)
-        elif self.tool is Tool.MARKER:
-            self._current = Marker([pt], self.color, w)
-        elif self.tool is Tool.LINE:
-            self._current = Line(pt, pt, self.color, w)
-        elif self.tool is Tool.ARROW:
-            self._current = Arrow(pt, pt, self.color, w)
-        elif self.tool is Tool.RECT:
-            self._current = Rect(pt, pt, self.color, w)
+        else:
+            self._current = new_shape(self.tool, pt, self.color, w)
         self.ov.update()
         return True
 
@@ -320,11 +285,7 @@ class Editor(QObject):
             return True
         if self._current is None:
             return False
-        pt = self._clamped(self.to_image(pos))
-        if isinstance(self._current, (Pencil, Marker)):
-            self._current.points.append(pt)
-        else:
-            self._current.end = pt
+        extend_shape(self._current, self._clamped(self.to_image(pos)))
         self.ov.update()
         return True
 
@@ -340,7 +301,7 @@ class Editor(QObject):
             return
         self.move(pos)
         a, self._current = self._current, None
-        if isinstance(a, (Line, Arrow, Rect)) and a.start == a.end:
+        if is_empty(a):
             self.ov.update()
             return
         self.stack.add(a)
@@ -355,7 +316,7 @@ class Editor(QObject):
 
     # ---------- ferramenta de texto ----------
     def _start_text(self, pos: QPointF, pt: Point) -> None:
-        edit = _TextInput(self.ov)
+        edit = TextInput(self.ov)
         edit.setTextMargins(0, 0, 0, 0)
         edit.move(pos.toPoint() - QPoint(2, 2))
         edit.textChanged.connect(lambda _t, e=edit: self._style_text_edit(e))
