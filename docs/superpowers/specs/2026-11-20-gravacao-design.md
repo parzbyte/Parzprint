@@ -277,3 +277,21 @@ Sempre `-pix_fmt yuv420p -movflags +faststart`, áudio copiado sem recompressão
 - Tamanho do bloco de áudio e da fila entre as threads.
 - Ícones novos (gravar, pausar, parar, microfone, som), no mesmo estilo dos atuais.
 - Como reduzir o quadro (Qt `scaled` com suavização é suficiente).
+
+## 12. Verificado em 2026-11-20
+
+Gravação de teste de 5 s de uma área 800×600 no monitor principal (1920×1080, escala 1),
+com `QScreenCapture` → recorte → `QVideoFrameInput` e loopback PyAudioWPatch →
+`QAudioBufferInput`:
+
+- O MP4 saiu com H.264 (Constrained Baseline, yuv420p), 800×600, 30 fps, e AAC 48 kHz
+  estéreo. O Qt usou o `H264 Encoder MFT`, o codificador por software do próprio Windows,
+  então não depende de placa de vídeo.
+- Recorte e redução: 7,3 ms por quadro em média (p95 12,4 ms). O processo inteiro,
+  gravando, usou 44% de um núcleo. Ficou abaixo do limite de 50%.
+- Uma janela com `SetWindowDisplayAffinity(hwnd, 0x11)` por cima da área não apareceu
+  em nenhum quadro.
+- O `QScreenCapture` **não** traz o ponteiro do mouse: precisa ser desenhado (seção 7.2.2).
+- Loopback: dispositivo padrão `Speakers (F11) [Loopback]`, 44,1 kHz, 2 canais, float32.
+  Precisa reamostrar para 48 kHz.
+- O FFmpeg do `imageio-ffmpeg` 0.8.1 (v9.0.2, 100 MB) tem `libx264`.
