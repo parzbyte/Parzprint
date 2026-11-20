@@ -58,7 +58,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           python -m pip install pytest-timeout
-          xvfb-run -a python -m pytest -v --timeout=60
+          # o atalho global do Linux (pynput) precisa da extensão RECORD do X, que o Xvfb só liga se pedir
+          xvfb-run -a -s "-screen 0 1280x1024x24 +extension RECORD" python -m pytest -q --timeout=60
 
       - name: Gerar o executável
         run: python build.py
