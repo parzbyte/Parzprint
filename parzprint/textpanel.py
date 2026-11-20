@@ -128,17 +128,17 @@ class TextLayout:
 
 
 PANEL_STYLE = """
-QWidget#panel { background: rgba(28, 28, 30, 246); border: 1px solid rgba(255,255,255,45); border-radius: 9px; }
+QWidget#panel { background: rgba(17, 17, 17, 246); border: 1px solid rgba(255,255,255,45); border-radius: 9px; }
 QLabel { color: #ECECEC; }
 QLabel#title { font-weight: bold; font-size: 13px; }
 QLabel#status { color: #A8A8A8; }
-QPlainTextEdit { background: #19191B; color: #F2F2F2; border: 1px solid #3A3A3C; border-radius: 6px;
-                 selection-background-color: #1E88E5; selection-color: #FFFFFF; font-size: 13px; padding: 4px; }
-QPushButton { background: #2C2C2E; color: #ECECEC; border: 1px solid #48484A; border-radius: 6px; padding: 6px 12px; }
-QPushButton:hover { background: #3A3A3C; }
-QPushButton:disabled { color: #6E6E6E; border-color: #3A3A3C; }
-QPushButton#primary { background: #1E88E5; border-color: #1E88E5; color: #FFFFFF; }
-QPushButton#primary:hover { background: #2196F3; }
+QPlainTextEdit { background: #1C1C1C; color: #F2F2F2; border: 1px solid #3A3A3A; border-radius: 6px;
+                 selection-background-color: #E11D2E; selection-color: #FFFFFF; font-size: 13px; padding: 4px; }
+QPushButton { background: #2A2A2A; color: #ECECEC; border: 1px solid #444444; border-radius: 6px; padding: 6px 12px; }
+QPushButton:hover { background: #3A3A3A; }
+QPushButton:disabled { color: #6A6A6A; border-color: #3A3A3A; }
+QPushButton#primary { background: #E11D2E; border-color: #E11D2E; color: #FFFFFF; }
+QPushButton#primary:hover { background: #A3111F; border-color: #A3111F; }
 """
 
 

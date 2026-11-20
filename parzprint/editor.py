@@ -31,11 +31,11 @@ from .toolbar import BottomToolbar, SideToolbar, Tool
 HUD_MS = 900
 PANEL_SIZE = QSize(420, 440)
 LENS_DIM = QColor(0, 0, 0, 110)  # escurece a imagem fora do texto, como no Google Lens
-LENS_SELECTION = QColor(30, 136, 229, 120)
+LENS_SELECTION = QColor(225, 29, 46, 105)
 CHIP_STYLE = """
-QPushButton { background: #1E88E5; color: white; border: none; border-radius: 15px;
+QPushButton { background: #E11D2E; color: white; border: none; border-radius: 15px;
               padding: 6px 16px; font-weight: bold; }
-QPushButton:hover { background: #2196F3; }
+QPushButton:hover { background: #A3111F; }
 """
 
 

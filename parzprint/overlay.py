@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject, QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen, QRegion
 from PySide6.QtWidgets import QWidget
 
+from . import brand
 from .capture import CaptureError, Monitor, grab_all
 from .geometry import normalize_rect
 from .qtutil import pil_to_qpixmap
@@ -15,7 +16,7 @@ from .qtutil import pil_to_qpixmap
 HANDLE = 8
 MIN_SIZE = 3
 DIM = QColor(0, 0, 0, 128)
-ACCENT = QColor("#1E88E5")
+ACCENT = QColor(brand.RED)
 
 
 class Mode(Enum):

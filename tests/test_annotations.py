@@ -6,8 +6,8 @@ from parzprint.annotations import (
 
 
 def test_palette_and_default():
-    assert PALETTE == ["#E53935", "#FDD835", "#43A047", "#1E88E5", "#000000", "#FFFFFF"]
-    assert DEFAULT_COLOR == "#E53935"
+    assert PALETTE == ["#E11D2E", "#FDD835", "#43A047", "#1565C0", "#000000", "#FFFFFF"]
+    assert DEFAULT_COLOR == "#E11D2E"
 
 
 def test_add_and_undo():

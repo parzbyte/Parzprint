@@ -6,10 +6,11 @@ from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from .. import brand
 from .exclude import exclude_from_capture
 
 BORDER = 2
-BORDER_COLOR = QColor("#E53935")
+BORDER_COLOR = QColor(brand.RED)
 
 
 class AreaFrame(QWidget):

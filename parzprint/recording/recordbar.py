@@ -18,7 +18,7 @@ MODES = [("off", "Microfone desligado"), ("always", "Sempre ligado"), ("ptt", "A
 BAR_STYLE = STYLE + """
 QComboBox { background: rgba(255,255,255,18); color: #ECECEC; border: 1px solid rgba(255,255,255,40);
             border-radius: 5px; padding: 3px 8px; min-height: 22px; }
-QComboBox QAbstractItemView { background: #2C2C2E; color: #ECECEC; selection-background-color: #1E88E5; }
+QComboBox QAbstractItemView { background: #1C1C1C; color: #ECECEC; selection-background-color: #E11D2E; }
 QLabel#time { color: #FFFFFF; font-weight: bold; padding: 0 8px; }
 QLabel#warn { color: #FFB74D; padding: 0 6px; }
 """

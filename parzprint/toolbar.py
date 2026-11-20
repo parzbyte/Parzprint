@@ -19,11 +19,11 @@ FG = "#ECECEC"
 FG_DISABLED = "#6E6E6E"
 
 STYLE = """
-QWidget#bar { background: rgba(28, 28, 30, 240); border: 1px solid rgba(255,255,255,38); border-radius: 7px; }
+QWidget#bar { background: rgba(17, 17, 17, 242); border: 1px solid rgba(255,255,255,38); border-radius: 7px; }
 QToolButton { background: transparent; border: none; border-radius: 5px; padding: 0px; }
 QToolButton:hover { background: rgba(255,255,255,28); }
 QToolButton:pressed { background: rgba(255,255,255,45); }
-QToolButton:checked { background: rgba(30,136,229,200); }
+QToolButton:checked { background: rgba(225, 29, 46, 230); }
 QLabel { color: #ECECEC; padding: 0 6px; }
 """
 

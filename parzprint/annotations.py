@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 
 from PIL import Image
 
-PALETTE = ["#E53935", "#FDD835", "#43A047", "#1E88E5", "#000000", "#FFFFFF"]
+PALETTE = ["#E11D2E", "#FDD835", "#43A047", "#1565C0", "#000000", "#FFFFFF"]  # a primeira é o vermelho Parzbyte
 DEFAULT_COLOR = PALETTE[0]
 MARKER_ALPHA = 102  # 40%
 
