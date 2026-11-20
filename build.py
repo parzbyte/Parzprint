@@ -37,7 +37,6 @@ def main() -> None:
         "--hidden-import", "PySide6.QtMultimedia",
         "--hidden-import", "PySide6.QtSvg",
         "--collect-all", "imageio_ffmpeg",
-        "--collect-all", "pyaudiowpatch",
         "--exclude-module", "PySide6.QtWebEngineCore",
         "--exclude-module", "PySide6.QtWebEngineWidgets",
         "--exclude-module", "PySide6.Qt3DCore",
@@ -45,7 +44,7 @@ def main() -> None:
         *extra,
     ]
     if sys.platform == "win32":
-        args += ["--icon", str(ROOT / "parzprint" / "assets" / "icon.ico")]
+        args += ["--icon", str(ROOT / "parzprint" / "assets" / "icon.ico"), "--collect-all", "pyaudiowpatch"]
     PyInstaller.__main__.run(args)
 
 
