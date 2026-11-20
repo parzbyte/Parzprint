@@ -61,8 +61,14 @@ jobs:
           # o atalho global do Linux (pynput) precisa da extensão RECORD do X, que o Xvfb só liga se pedir
           xvfb-run -a -s "-screen 0 1280x1024x24 +extension RECORD" python -m pytest -q --timeout=60
 
-      - name: Gerar o executável
+      - name: Gerar o executável (Windows)
+        if: runner.os == 'Windows'
         run: python build.py
+
+      # sem uma tela, o pynput não carrega e o PyInstaller deixa de fora as peças do atalho
+      - name: Gerar o executável (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a -s "-screen 0 1280x1024x24 +extension RECORD" python build.py
 
       # Só roda se houver um certificado de assinatura cadastrado nos segredos do repositório
       # (WINDOWS_CERT_PFX em base64 e WINDOWS_CERT_SENHA).
