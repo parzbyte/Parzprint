@@ -60,3 +60,33 @@ def test_is_valid_hotkey():
     assert not is_valid_hotkey("")
     assert not is_valid_hotkey("Ctrl+Shift")
     assert not is_valid_hotkey("Foo+S")
+
+
+def test_recording_defaults():
+    s = Settings()
+    assert (s.rec_resolution, s.rec_fps, s.rec_quality) == ("original", 30, "media")
+    assert s.rec_compress and s.rec_countdown and s.system_audio
+    assert s.mic_mode == "always" and s.mic_device == "" and s.ptt_hotkey == "Ctrl+Alt+Space"
+    assert s.video_dir.endswith("Parzprint")
+
+
+def test_invalid_recording_values_fall_back(tmp_path):
+    p = tmp_path / "s.json"
+    p.write_text(json.dumps({"rec_fps": 60, "rec_resolution": "4k", "rec_quality": "x", "mic_mode": "y",
+                             "ptt_hotkey": "Ctrl+", "rec_compress": "sim", "mic_device": 5}), encoding="utf-8")
+    s = load_settings(p)
+    assert (s.rec_fps, s.rec_resolution, s.rec_quality, s.mic_mode) == (30, "original", "media", "always")
+    assert s.ptt_hotkey == "Ctrl+Alt+Space" and s.rec_compress is True and s.mic_device == ""
+
+
+def test_recording_values_roundtrip(tmp_path):
+    p = tmp_path / "s.json"
+    s = Settings(rec_fps=15, rec_resolution="720", rec_quality="leve", mic_mode="ptt", mic_device="abc", system_audio=False)
+    save_settings(s, p)
+    assert load_settings(p) == s
+
+
+def test_fps_rejects_bool(tmp_path):
+    p = tmp_path / "s.json"
+    p.write_text(json.dumps({"rec_fps": True}), encoding="utf-8")
+    assert load_settings(p).rec_fps == 30

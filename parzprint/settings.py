@@ -13,6 +13,11 @@ MODIFIERS = ("Ctrl", "Shift", "Alt", "Win")
 IMAGE_FORMATS = ("PNG", "JPG")
 OCR_ENGINES = ("indra",)
 DEFAULT_HOTKEY = "Ctrl+Shift+S"
+DEFAULT_PTT_HOTKEY = "Ctrl+Alt+Space"
+REC_RESOLUTIONS = ("original", "1080", "720", "480")
+REC_FPS = (30, 15)
+REC_QUALITIES = ("alta", "media", "leve")
+MIC_MODES = ("off", "always", "ptt")
 
 
 def DEFAULT_PICTURES_DIR() -> str:
@@ -22,6 +27,14 @@ def DEFAULT_PICTURES_DIR() -> str:
         return str(Path.home())
 
 
+def DEFAULT_VIDEOS_DIR() -> str:
+    try:
+        base = platformdirs.user_videos_dir()
+    except Exception:  # noqa: BLE001
+        base = str(Path.home())
+    return str(Path(base) / "Parzprint")
+
+
 @dataclass
 class Settings:
     hotkey: str = DEFAULT_HOTKEY
@@ -29,6 +42,16 @@ class Settings:
     save_dir: str = field(default_factory=DEFAULT_PICTURES_DIR)
     image_format: str = "PNG"
     ocr_engine: str = "indra"
+    video_dir: str = field(default_factory=DEFAULT_VIDEOS_DIR)
+    rec_resolution: str = "original"
+    rec_fps: int = 30
+    rec_quality: str = "media"
+    rec_compress: bool = True
+    rec_countdown: bool = True
+    ptt_hotkey: str = DEFAULT_PTT_HOTKEY
+    mic_device: str = ""
+    mic_mode: str = "always"
+    system_audio: bool = True
 
 
 def settings_path() -> Path:
@@ -59,6 +82,22 @@ def _valid(name: str, value: object) -> bool:
         return value in IMAGE_FORMATS
     if name == "ocr_engine":
         return value in OCR_ENGINES
+    if name in ("rec_compress", "rec_countdown", "system_audio"):
+        return isinstance(value, bool)
+    if name == "video_dir":
+        return isinstance(value, str) and bool(value)
+    if name == "rec_resolution":
+        return value in REC_RESOLUTIONS
+    if name == "rec_fps":
+        return isinstance(value, int) and not isinstance(value, bool) and value in REC_FPS
+    if name == "rec_quality":
+        return value in REC_QUALITIES
+    if name == "ptt_hotkey":
+        return is_valid_hotkey(value)  # type: ignore[arg-type]
+    if name == "mic_device":
+        return isinstance(value, str)
+    if name == "mic_mode":
+        return value in MIC_MODES
     return False
 
 
