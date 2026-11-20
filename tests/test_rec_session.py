@@ -55,6 +55,7 @@ class FakeAudio(QObject):
 
 class FakePump(QObject):
     frame_ready = Signal(object)
+    warning = Signal(str)
 
     def __init__(self, screen, crop, out_size, fps):
         super().__init__()

@@ -139,6 +139,7 @@ class FramePump(QObject):
     """Recebe quadros do monitor, entrega no máximo ``fps`` por segundo, já recortados."""
 
     frame_ready = Signal(QVideoFrame)
+    warning = Signal(str)
 
     def __init__(self, screen, crop: tuple[int, int, int, int], out_size: tuple[int, int], fps: int,
                  draw_cursor: bool = True, parent=None):
@@ -166,6 +167,7 @@ class FramePump(QObject):
         self._sink = QVideoSink(self)
         self._session.setVideoSink(self._sink)
         self._sink.videoFrameChanged.connect(self._on_frame)
+        self._capture.errorOccurred.connect(lambda *a: self._on_capture_error(*a))
         self._capture.setActive(True)
 
     def stop(self) -> None:
@@ -173,6 +175,9 @@ class FramePump(QObject):
             self._capture.setActive(False)
             self._sink.videoFrameChanged.disconnect(self._on_frame)
         self._capture = self._session = self._sink = None
+
+    def _on_capture_error(self, _error=None, message: str = "") -> None:
+        self.warning.emit(f"A captura da tela falhou: {message or 'erro desconhecido'}")
 
     def _due(self) -> int | None:
         if self.clock is None or self.clock.paused:

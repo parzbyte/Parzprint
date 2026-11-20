@@ -28,11 +28,15 @@ def ffmpeg_exe() -> str:
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
-def _default_runner(args: list[str]) -> int:
+def _default_runner(args: list[str], register=None) -> int:
     flags = 0
     if sys.platform == "win32":
         flags = subprocess.BELOW_NORMAL_PRIORITY_CLASS | subprocess.CREATE_NO_WINDOW
-    return subprocess.run([ffmpeg_exe(), *args], creationflags=flags, capture_output=True).returncode
+    proc = subprocess.Popen([ffmpeg_exe(), *args], creationflags=flags,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if register is not None:
+        register(proc)
+    return proc.wait()
 
 
 def _free_name(final: Path) -> Path:
@@ -48,7 +52,7 @@ def _free_name(final: Path) -> Path:
 
 def finalize(
     temp: Path, final: Path, compress: bool, quality: str,
-    runner: Callable[[list[str]], int] | None = None,
+    runner: Callable[..., int] | None = None, register=None,
 ) -> Path:
     """Transforma o arquivo gravado no vídeo final; nunca perde a gravação.
 
@@ -58,7 +62,9 @@ def finalize(
     if compress:
         work = final.with_name(final.stem + ".comprimindo.mp4")
         try:
-            code = (runner or _default_runner)(x264_args(temp, work, quality))
+            run = runner or _default_runner
+            args = x264_args(temp, work, quality)
+            code = run(args) if register is None else run(args, register=register)
         except Exception:  # noqa: BLE001
             code = -1
         if code == 0 and work.exists() and 0 < work.stat().st_size < temp.stat().st_size:
@@ -81,6 +87,7 @@ class CompressWorker(QObject):
         super().__init__(None)
         self._args = (temp, final, compress, quality)
         self._runner = runner
+        self._proc = None
         self._thread = threading.Thread(target=self._run, name="parzprint-compress", daemon=True)
 
     def start(self) -> None:
@@ -91,9 +98,21 @@ class CompressWorker(QObject):
     def is_running(self) -> bool:
         return self._thread.is_alive()
 
+    def _register(self, proc) -> None:
+        self._proc = proc
+
+    def abort(self, timeout: float = 5.0) -> None:
+        """Interrompe a compressão (ao fechar o app); o vídeo original fica com o nome final."""
+        if self._proc is not None:
+            try:
+                self._proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+        self._thread.join(timeout)
+
     def _run(self) -> None:
         try:
-            out = finalize(*self._args, runner=self._runner)
+            out = finalize(*self._args, runner=self._runner, register=self._register)
             self.done.emit(out, out.stat().st_size)
         except Exception as e:  # noqa: BLE001
             self.failed.emit(str(e))

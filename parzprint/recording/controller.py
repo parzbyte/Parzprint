@@ -83,6 +83,7 @@ class RecordingController(QObject):
         self.frame = (self._frame_factory or AreaFrame)(area)
         self.bar = (self._bar_factory or RecordBar)(session, self.settings, self.layer)
         self.bar.settings_changed.connect(self._on_bar_settings)
+        self.layer.draw_mode_changed.connect(self._raise_bar)
         session.countdown_tick.connect(self.frame.show_count)
         session.state_changed.connect(self._on_state)
         session.saved.connect(self._on_saved)
@@ -120,8 +121,18 @@ class RecordingController(QObject):
         if self.session is not None:
             self.session.stop()
 
+    def _raise_bar(self, _on: bool) -> None:
+        # a camada de desenho fica por cima da área; a barrinha precisa continuar clicável
+        if self.bar is not None:
+            self.bar.raise_()
+
     def _on_bar_settings(self, settings: Settings) -> None:
-        self._save_settings(settings)
+        # a barrinha só mexe no microfone e no som do PC; o resto vem das configurações atuais
+        current = self.settings
+        current.mic_device = settings.mic_device
+        current.mic_mode = settings.mic_mode
+        current.system_audio = settings.system_audio
+        self._save_settings(current)
         self._sync_ptt()
 
     # ------------------------------------------------------------ fim
@@ -136,13 +147,12 @@ class RecordingController(QObject):
 
     def shutdown(self, timeout_ms: int = 5000) -> None:
         """Para a gravação e espera o arquivo ser fechado antes de o app sair."""
-        session = self.session
-        if session is None:
-            return
+        waiting = [s for s in [self.session, *self._finishing] if s is not None]
         self.stop()
+        busy = ("countdown", "recording", "paused", "stopping")
         t = QElapsedTimer()
         t.start()
-        while session.state not in ("done", "cancelled") and t.elapsed() < timeout_ms:
+        while any(s.state in busy for s in waiting) and t.elapsed() < timeout_ms:
             QCoreApplication.processEvents()
 
     # ------------------------------------------------------------ apertar para falar

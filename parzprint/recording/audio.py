@@ -9,10 +9,12 @@ from types import SimpleNamespace
 import numpy as np
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from .audio_mix import BLOCK_FRAMES, CHANNELS, SAMPLE_RATE, mix_block, to_stereo_48k
+from .audio_mix import BLOCK_FRAMES, CHANNELS, SAMPLE_RATE, Resampler, mix_block
 from .clock import RecordingClock
 
 MAX_BACKLOG = SAMPLE_RATE  # no máximo 1 s guardado por fonte; o excesso é descartado
+CUSHION = SAMPLE_RATE * 10 // 1000  # folga de 10 ms entre a chegada e o uso
+CUSHION_MAX = SAMPLE_RATE * 30 // 1000  # passou de 30 ms de atraso: corta de volta para a folga
 
 
 # ---------------------------------------------------------------- dispositivos
@@ -101,6 +103,11 @@ class MicSource:
         self._fmt = fmt
         self._source = QAudioSource(device, fmt)
         self._io = self._source.start()
+        if self._io is None:
+            self._source = None
+            self._fail("Não foi possível abrir o microfone (confira a permissão de microfone do Windows)")
+            return
+        self._resampler = Resampler(fmt.sampleRate(), max(1, fmt.channelCount()))
         self._io.readyRead.connect(self._read_io)
 
     def _check_error(self) -> None:
@@ -137,7 +144,7 @@ class MicSource:
             data = (data.astype(np.float32) - 128) / 128
         ch = max(1, self._fmt.channelCount())
         data = data[: len(data) - len(data) % ch]
-        self._fifo.push(to_stereo_48k(data, self._fmt.sampleRate(), ch))
+        self._fifo.push(self._resampler.feed(data))
 
     def read(self) -> np.ndarray:
         self._check_error()
@@ -158,6 +165,7 @@ class LoopbackSource:
         self._fifo = _Fifo()
         self._pa = None
         self._stream = None
+        self._lost = False
 
     def start(self) -> None:
         try:
@@ -166,10 +174,11 @@ class LoopbackSource:
             self._pa = pa.PyAudio()
             dev = self._pa.get_default_wasapi_loopback()
             rate, ch = int(dev["defaultSampleRate"]), max(1, int(dev["maxInputChannels"]))
+            resampler = Resampler(rate, ch)
 
             def cb(data, frames, info, status):
                 block = np.frombuffer(data, np.float32)
-                self._fifo.push(to_stereo_48k(block[: len(block) - len(block) % ch], rate, ch))
+                self._fifo.push(resampler.feed(block[: len(block) - len(block) % ch]))
                 return (None, pa.paContinue)
 
             self._stream = self._pa.open(
@@ -183,6 +192,15 @@ class LoopbackSource:
                 self.on_error(f"Som do computador indisponível: {e}")
 
     def read(self) -> np.ndarray:
+        if self._stream is not None and not self._lost:
+            try:
+                alive = self._stream.is_active()
+            except Exception:  # noqa: BLE001
+                alive = False
+            if not alive:
+                self._lost = True
+                if self.on_error is not None:
+                    self.on_error("O som do computador parou de ser capturado (a saída de áudio mudou?)")
         return self._fifo.take()
 
     def stop(self) -> None:
@@ -223,6 +241,10 @@ class AudioCapture(QObject):
         self._pos = 0  # amostras já emitidas
         self.clock: RecordingClock | None = None
         self._timer: QTimer | None = None
+
+    @property
+    def mic_id(self) -> str | None:
+        return self._mic_id if self._mic is not None else None
 
     # -- fontes
     def _open_mic(self) -> None:
@@ -276,6 +298,11 @@ class AudioCapture(QObject):
             self._loop = None
             self._sys_buf = np.zeros((0, CHANNELS), np.float32)
 
+    @staticmethod
+    def _cushioned(buf: np.ndarray) -> np.ndarray:
+        # se o dispositivo anda mais rápido que o relógio, o atraso cresce; corta de volta
+        return buf[-CUSHION:] if len(buf) > CUSHION_MAX else buf
+
     # -- ritmo
     def tick(self) -> None:
         if self.clock is None:
@@ -285,9 +312,9 @@ class AudioCapture(QObject):
         if self.clock.paused:
             return  # o que chegou durante a pausa é descartado
         if mic is not None and len(mic):
-            self._mic_buf = np.concatenate([self._mic_buf, mic])[-MAX_BACKLOG:]
+            self._mic_buf = self._cushioned(np.concatenate([self._mic_buf, mic]))
         if sys_ is not None and len(sys_):
-            self._sys_buf = np.concatenate([self._sys_buf, sys_])[-MAX_BACKLOG:]
+            self._sys_buf = self._cushioned(np.concatenate([self._sys_buf, sys_]))
         target = self.clock.now_us() * SAMPLE_RATE // 1_000_000
         while self._pos + BLOCK_FRAMES <= target:
             m, self._mic_buf = self._mic_buf[:BLOCK_FRAMES], self._mic_buf[BLOCK_FRAMES:]

@@ -15,6 +15,26 @@ from .clock import RecordingClock
 from .plan import crop_box, output_size, temp_path, video_filename
 
 COUNTDOWN_SECONDS = 3
+STOP_TIMEOUT_MS = 10_000  # se o gravador não confirmar o fim nesse tempo, fecha mesmo assim
+
+
+class AudioQueue:
+    """Blocos de áudio recusados pelo gravador ficam na fila e saem na ordem, sem buracos."""
+
+    def __init__(self, send):
+        self._send = send
+        self._items: list[tuple[bytes, int]] = []
+
+    def push(self, data: bytes, us: int) -> None:
+        self._items.append((data, us))
+        self.flush()
+
+    def flush(self) -> None:
+        while self._items and self._send(*self._items[0]):
+            self._items.pop(0)
+
+    def __len__(self) -> int:
+        return len(self._items)
 _QUALITY = {"alta": "HighQuality", "media": "NormalQuality", "leve": "LowQuality"}
 
 
@@ -58,6 +78,8 @@ class QtRecorder(QObject):
         self._rec.recorderStateChanged.connect(self._on_state)
         self._stopping = False
         self.dropped = 0
+        self._queue = AudioQueue(self._send_audio_now)
+        self._audio.readyToSendAudioBuffer.connect(self._queue.flush)
 
     def _on_state(self, state) -> None:
         from PySide6.QtMultimedia import QMediaRecorder
@@ -83,10 +105,13 @@ class QtRecorder(QObject):
         if not self._video.sendVideoFrame(frame):
             self.dropped += 1
 
-    def send_audio(self, data: bytes, us: int) -> None:
+    def _send_audio_now(self, data: bytes, us: int) -> bool:
         from PySide6.QtMultimedia import QAudioBuffer
 
-        self._audio.sendAudioBuffer(QAudioBuffer(data, self._fmt, us))
+        return bool(self._audio.sendAudioBuffer(QAudioBuffer(data, self._fmt, us)))
+
+    def send_audio(self, data: bytes, us: int) -> None:
+        self._queue.push(data, us)
 
 
 def _default_audio(mic_id, system_audio):
@@ -120,7 +145,7 @@ class RecordingSession(QObject):
         now: Callable[[], datetime] = datetime.now,
         recorder_factory=None, audio_factory=None, pump_factory=None,
         finalize_fn=None, time_fn: Callable[[], float] = time.perf_counter,
-        mic_resolver=None, sync_finalize: bool = False, parent=None,
+        mic_resolver=None, sync_finalize: bool = False, stop_timeout_ms: int = STOP_TIMEOUT_MS, parent=None,
     ):
         super().__init__(parent)
         self.settings = settings
@@ -144,6 +169,12 @@ class RecordingSession(QObject):
         self._countdown_timer.setInterval(1000)
         self._countdown_timer.timeout.connect(self._countdown_step)
         self._worker = None
+        self._finalized = False
+        self._compress_on_finish = settings.rec_compress
+        self._stop_watchdog = QTimer(self)
+        self._stop_watchdog.setSingleShot(True)
+        self._stop_watchdog.setInterval(stop_timeout_ms)
+        self._stop_watchdog.timeout.connect(self._on_recorder_finished)
 
     # ------------------------------------------------------------ estado
     def _set(self, state: str) -> None:
@@ -172,9 +203,27 @@ class RecordingSession(QObject):
         self._start_recording()
 
     def _start_recording(self) -> None:
+        try:
+            self._start_recording_inner()
+        except Exception as e:  # noqa: BLE001
+            self._finalized = True  # nada a salvar: o gravador não chegou a começar
+            self._stop_inputs()
+            if self.recorder is not None:
+                try:
+                    self.recorder.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+            self._delete_temp()
+            self._set("done")
+            self.failed.emit(f"Não foi possível começar a gravação: {e}")
+
+    def _start_recording_inner(self) -> None:
         s = self.settings
         crop = crop_box(self.monitor, self.area)
         out = output_size(crop[2], crop[3], s.rec_resolution)
+        if out == (crop[2] // 2 * 2, crop[3] // 2 * 2):
+            # sem redução: corta o pixel ímpar em vez de redimensionar cada quadro
+            crop = (crop[0], crop[1], out[0], out[1])
         folder = Path(s.video_dir)
         try:
             folder.mkdir(parents=True, exist_ok=True)
@@ -197,6 +246,8 @@ class RecordingSession(QObject):
         self.pump.frame_ready.connect(self.recorder.send_video)
         self.audio.block_ready.connect(self.recorder.send_audio)
         self.audio.warning.connect(self.warning.emit)
+        if hasattr(self.pump, "warning"):
+            self.pump.warning.connect(self.warning.emit)
         self.recorder.start()
         self.clock.start()
         self.pump.start(self.clock)
@@ -229,6 +280,7 @@ class RecordingSession(QObject):
         self.clock.resume()
         self._stop_inputs()
         self._set("stopping")
+        self._stop_watchdog.start()
         self.recorder.stop()
 
     def cancel(self) -> None:
@@ -272,19 +324,20 @@ class RecordingSession(QObject):
         worker.start()
 
     def _on_recorder_finished(self) -> None:
-        if self.state == "cancelled":
+        self._stop_watchdog.stop()
+        if self.state == "cancelled" or self._finalized:
             return
+        self._finalized = True
         self._set("done")
-        self._finalize(self.settings.rec_compress)
+        self._finalize(self._compress_on_finish)
 
     def _on_recorder_error(self, message: str) -> None:
-        if self.state in ("done", "cancelled"):
+        if self.state in ("done", "cancelled", "stopping"):
             return
+        # para tudo e espera o gravador fechar o arquivo antes de salvar o que foi gravado
         self._stop_inputs()
-        try:
-            self.recorder.finished.disconnect(self._on_recorder_finished)
-        except (RuntimeError, TypeError):
-            pass
-        self._set("done")
+        self._compress_on_finish = False
+        self._set("stopping")
         self.failed.emit(f"A gravação parou: {message}")
-        self._finalize(False)
+        self._stop_watchdog.start()
+        self.recorder.stop()

@@ -41,7 +41,8 @@ def bar_position(area: QRect, screen: QRect, size: QSize) -> QPoint:
 class RecordBar(QWidget):
     settings_changed = Signal(object)  # Settings
 
-    def __init__(self, session, settings: Settings, layer, mics: list[tuple[str, str]] | None = None):
+    def __init__(self, session, settings: Settings, layer, mics: list[tuple[str, str]] | None = None,
+                 resolve=None):
         super().__init__(None)
         self.session = session
         self.settings = settings
@@ -56,6 +57,9 @@ class RecordBar(QWidget):
             from .audio import list_microphones
 
             mics = list_microphones()
+        if resolve is None:
+            from .audio import resolve_microphone as resolve
+        self._resolve = resolve
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(6, 4, 6, 4)
@@ -69,7 +73,9 @@ class RecordBar(QWidget):
         for dev_id, name in mics:
             self.mic_combo.addItem(name, dev_id)
         self.mic_combo.addItem("Nenhum microfone", "")
-        idx = self.mic_combo.findData(settings.mic_device)
+        ids = [m[0] for m in mics]
+        shown = settings.mic_device if settings.mic_device in ids else (resolve(settings.mic_device) or "")
+        idx = self.mic_combo.findData(shown)
         self.mic_combo.setCurrentIndex(idx if idx >= 0 else 0)
         self.mic_combo.currentIndexChanged.connect(self._on_mic)
         lay.addWidget(self.mic_combo)
@@ -131,16 +137,30 @@ class RecordBar(QWidget):
 
     def _on_mic(self, _i: int) -> None:
         dev_id = self.mic_combo.currentData() or ""
+        if not dev_id:  # "Nenhum microfone" é o mesmo que desligar o microfone
+            self.mode_combo.setCurrentIndex(self.mode_combo.findData("off"))
+            self._on_mode(0)
+            return
         self.settings.mic_device = dev_id
-        if self._audio() is not None:
-            self._audio().set_mic(dev_id or None)
+        audio = self._audio()
+        if audio is not None and self.settings.mic_mode != "off":
+            audio.set_mic(dev_id)
         self._changed()
 
     def _on_mode(self, _i: int) -> None:
         mode = self.mode_combo.currentData()
         self.settings.mic_mode = mode
-        if self._audio() is not None:
-            self._audio().set_mic_open(mode == "always")
+        audio = self._audio()
+        if audio is not None:
+            if mode == "off":
+                audio.set_mic(None)
+                audio.set_mic_open(False)
+            else:
+                if getattr(audio, "mic_id", None) is None:
+                    dev = self.mic_combo.currentData() or self._resolve(self.settings.mic_device)
+                    if dev:
+                        audio.set_mic(dev)
+                audio.set_mic_open(mode == "always")
         self._changed()
 
     def _on_sys(self, on: bool) -> None:

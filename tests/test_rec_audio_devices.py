@@ -53,9 +53,10 @@ def _capture(qapp, t, mic=None, sys_=None, system_audio=True):
 def test_capture_emits_20ms_blocks_with_rising_stamps(qapp):
     t = [0.0]
     cap, mic, sys_, blocks = _capture(qapp, t)
-    t[0] = 0.1
-    mic.pending = sys_.pending = 4800
-    cap.tick()
+    for i in range(1, 6):  # o dispositivo entrega 20 ms por vez
+        t[0] = 0.02 * i
+        mic.pending = sys_.pending = 960
+        cap.tick()
     assert len(blocks) == 5
     assert [us for _, us in blocks] == [0, 20000, 40000, 60000, 80000]
     assert all(b.shape == (BLOCK_FRAMES, 2) for b, _ in blocks)

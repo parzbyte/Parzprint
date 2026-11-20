@@ -146,6 +146,10 @@ class App(QObject):
 
     def quit(self) -> None:
         self.recorder.shutdown()
+        from .recording.compress import running_workers
+
+        for worker in running_workers():
+            worker.abort()
         if self.hotkey is not None:
             self.hotkey.stop()
         if self.session is not None:
