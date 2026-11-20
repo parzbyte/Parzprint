@@ -1,4 +1,19 @@
-# Parzprint
+<p align="center">
+  <img src="parzprint/assets/icon.png" width="96" alt="Ícone do Parzprint">
+</p>
+
+<h1 align="center">Parzprint</h1>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/parzbyte-logo-negativo.svg">
+    <img src="docs/img/parzbyte-logo.svg" height="34" alt="por Parzbyte">
+  </picture>
+</p>
+
+<p align="center">
+  <a href="https://github.com/parzbyte/Parzprint/releases/latest"><b>Baixar para Windows ou Linux</b></a>
+</p>
 
 Parzprint é uma ferramenta de captura de tela para Windows, no estilo do Lightshot. Com um
 atalho você escolhe uma área da tela e, a partir dela, pode:
@@ -63,16 +78,41 @@ quadros por segundo e qualidade ficam em Configurações.
 
 ## Instalar
 
-### Pelo executável
+### Windows
 
-Gere a pasta `dist/Parzprint` com `python build.py` (veja abaixo), coloque onde quiser e abra o
-`Parzprint.exe`. Não precisa instalar nada: o pacote já traz o Python, o Qt, o modelo do
-Indra e o FFmpeg. Copie a pasta inteira, porque o executável depende da pasta `_internal`
-que fica ao lado dele.
+Baixe o `Parzprint-windows.zip` em [Releases](https://github.com/parzbyte/Parzprint/releases/latest),
+extraia a pasta onde quiser e abra o `Parzprint.exe`. Não precisa instalar nada: o pacote já
+traz o Python, o Qt, o modelo do Indra e o FFmpeg. Mantenha a pasta inteira junta, porque o
+executável depende da pasta `_internal` que fica ao lado dele.
 
 Na primeira vez o Windows pode mostrar "O Windows protegeu o computador", porque o
-executável não tem assinatura digital. Clique em "Mais informações" e em "Executar assim
-mesmo".
+executável ainda não tem o certificado de assinatura da Microsoft. Clique em "Mais
+informações" e em "Executar assim mesmo". Para ter certeza de que o arquivo é o original,
+confira a assinatura de origem (abaixo).
+
+### Linux
+
+Baixe o `Parzprint-linux.tar.gz`, extraia e rode `./Parzprint/Parzprint`. No Linux o print, as
+anotações e o texto da imagem estão disponíveis; a gravação de tela ainda é só do Windows.
+A versão do Linux é gerada automaticamente e ainda não foi testada por uma pessoa.
+
+### Conferir se o arquivo é o original
+
+Cada versão é gerada pelo próprio GitHub a partir deste repositório, e o GitHub assina de onde
+o arquivo veio. Com o [GitHub CLI](https://cli.github.com/) instalado:
+
+```bash
+gh attestation verify Parzprint-windows.zip --repo parzbyte/Parzprint
+```
+
+A resposta tem que dizer que a verificação passou. Também dá para comparar o SHA-256 do
+arquivo com o que está no `SHA256SUMS.txt` da mesma versão:
+
+```bash
+sha256sum Parzprint-linux.tar.gz
+```
+
+No Windows, o equivalente é `certutil -hashfile Parzprint-windows.zip SHA256`.
 
 ### Pelo código
 
@@ -200,6 +240,12 @@ build.py               gera o executável com PyInstaller
 - Em Windows 10 de antes da versão 2004, o Windows não consegue esconder a barrinha do vídeo.
 - O ponteiro de texto (a barrinha "I") sai branco no vídeo e some sobre fundo branco.
 - O Indra lê "Última" como "Ultima" em letras maiúsculas acentuadas, um limite do modelo.
+
+## Licença e marca
+
+O código é livre, sob a [licença MIT](LICENSE): pode usar, modificar e distribuir. A marca
+fica de fora: os nomes Parzbyte e Parzprint, a logo, o símbolo e o ícone são da Parzbyte. Uma
+versão modificada precisa de outro nome e outro ícone. Os detalhes estão em [MARCA.md](MARCA.md).
 
 ## Licenças de terceiros
 
