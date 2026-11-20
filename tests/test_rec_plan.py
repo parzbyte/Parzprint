@@ -32,3 +32,7 @@ def test_crop_box_uses_monitor_offset_and_scale():
 def test_video_names():
     assert video_filename(datetime(2026, 11, 20, 9, 5, 7)) == "Parzprint_2026-11-20_09-05-07.mp4"
     assert temp_path(Path("C:/v/a.mp4")) == Path("C:/v/a.gravando.mp4")
+
+
+def test_output_size_reaches_target_height_exactly():
+    assert output_size(801, 601, "480")[1] == 480

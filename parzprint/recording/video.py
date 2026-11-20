@@ -30,6 +30,33 @@ def prepare_frame(
 
 # ---------------------------------------------------------------- ponteiro (Windows)
 _cursor_cache: dict[int, tuple[QImage, int, int]] = {}
+_declared = False
+
+
+def _win32():
+    """Declara os tipos das funções do Windows usadas (handles são 64 bits)."""
+    global _declared
+    import ctypes
+    from ctypes import wintypes
+
+    user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+    if not _declared:
+        H = wintypes.HANDLE
+        gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+        gdi32.CreateCompatibleDC.restype = wintypes.HDC
+        gdi32.CreateDIBSection.argtypes = [wintypes.HDC, ctypes.c_void_p, wintypes.UINT,
+                                           ctypes.POINTER(ctypes.c_void_p), H, wintypes.DWORD]
+        gdi32.CreateDIBSection.restype = wintypes.HBITMAP
+        gdi32.SelectObject.argtypes = [wintypes.HDC, H]
+        gdi32.SelectObject.restype = H
+        gdi32.DeleteObject.argtypes = [H]
+        gdi32.DeleteDC.argtypes = [wintypes.HDC]
+        user32.GetIconInfo.argtypes = [H, ctypes.c_void_p]
+        user32.DrawIconEx.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int, H, ctypes.c_int,
+                                      ctypes.c_int, wintypes.UINT, H, wintypes.UINT]
+        user32.GetCursorInfo.argtypes = [ctypes.c_void_p]
+        _declared = True
+    return user32, gdi32
 
 
 def _cursor_image() -> tuple[QImage, int, int] | None:
@@ -47,7 +74,7 @@ def _cursor_image() -> tuple[QImage, int, int] | None:
         _fields_ = [("fIcon", wintypes.BOOL), ("xHotspot", wintypes.DWORD), ("yHotspot", wintypes.DWORD),
                     ("hbmMask", wintypes.HBITMAP), ("hbmColor", wintypes.HBITMAP)]
 
-    user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+    user32, gdi32 = _win32()
     ci = CURSORINFO()
     ci.cbSize = ctypes.sizeof(CURSORINFO)
     if not user32.GetCursorInfo(ctypes.byref(ci)) or not (ci.flags & 1) or not ci.hCursor:
@@ -163,7 +190,11 @@ class FramePump(QObject):
     def _cursor(self):
         if not self.draw_cursor or self.screen is None:
             return None
-        found = _cursor_image()
+        try:
+            found = _cursor_image()
+        except Exception:  # noqa: BLE001  (o ponteiro nunca pode custar o quadro)
+            self.draw_cursor = False
+            return None
         if found is None:
             return None
         pic, hx, hy = found
