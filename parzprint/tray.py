@@ -8,6 +8,8 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from .brand import SIGNATURE
+
 ASSETS = Path(__file__).resolve().parent / "assets"
 
 
@@ -23,7 +25,7 @@ class Tray(QSystemTrayIcon):
 
     def __init__(self, parent=None):
         super().__init__(app_icon(), parent)
-        self.setToolTip("Parzprint")
+        self.setToolTip(SIGNATURE)
         menu = QMenu()
         self._stop_action = menu.addAction("Parar gravação", self.stop_recording_requested.emit)
         self._stop_action.setVisible(False)
@@ -36,7 +38,7 @@ class Tray(QSystemTrayIcon):
         self.activated.connect(self._on_activated)
 
     def set_hotkey_hint(self, hotkey: str | None) -> None:
-        self.setToolTip(f"Parzprint ({hotkey})" if hotkey else "Parzprint")
+        self.setToolTip(f"{SIGNATURE} ({hotkey})" if hotkey else SIGNATURE)
 
     def _on_activated(self, reason) -> None:
         if reason in (QSystemTrayIcon.ActivationReason.DoubleClick, QSystemTrayIcon.ActivationReason.Trigger):

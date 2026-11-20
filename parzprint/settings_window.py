@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
+from .brand import MUTED, SIGNATURE
 from .hotkey import HotkeyError, from_qt_key_event, is_wayland, to_pynput
 from .settings import IMAGE_FORMATS, Settings
 from .tray import app_icon
@@ -106,11 +107,16 @@ class SettingsWindow(QDialog):
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
 
+        signature = QLabel(SIGNATURE, self)
+        signature.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        signature.setStyleSheet(f"color: {MUTED};")
+
         lay = QVBoxLayout(self)
         lay.addLayout(form)
         if self.recording_box is not None:
             lay.addWidget(self.recording_box)
         lay.addWidget(buttons)
+        lay.addWidget(signature)
 
     def _recording_section(self, settings: Settings) -> QGroupBox:
         box = QGroupBox("Gravação", self)
