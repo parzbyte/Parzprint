@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import replace
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
@@ -97,6 +98,8 @@ class SettingsWindow(QDialog):
         self.image_format.setCurrentText(settings.image_format)
         form.addRow("Formato", self.image_format)
 
+        self.recording_box = self._recording_section(settings) if sys.platform == "win32" else None
+
         buttons = QDialogButtonBox(self)
         buttons.addButton("Salvar", QDialogButtonBox.ButtonRole.AcceptRole)
         buttons.addButton("Cancelar", QDialogButtonBox.ButtonRole.RejectRole)
@@ -105,7 +108,55 @@ class SettingsWindow(QDialog):
 
         lay = QVBoxLayout(self)
         lay.addLayout(form)
+        if self.recording_box is not None:
+            lay.addWidget(self.recording_box)
         lay.addWidget(buttons)
+
+    def _recording_section(self, settings: Settings) -> QGroupBox:
+        box = QGroupBox("Gravação", self)
+        form = QFormLayout(box)
+        row = QHBoxLayout()
+        self.video_dir = QLineEdit(settings.video_dir, box)
+        browse = QPushButton("Escolher…", box)
+        browse.clicked.connect(self._browse_videos)
+        row.addWidget(self.video_dir, 1)
+        row.addWidget(browse)
+        form.addRow("Pasta dos vídeos", row)
+
+        self.rec_resolution = QComboBox(box)
+        for key, label in (("original", "Original"), ("1080", "1080p"), ("720", "720p"), ("480", "480p")):
+            self.rec_resolution.addItem(label, key)
+        self.rec_resolution.setCurrentIndex(max(0, self.rec_resolution.findData(settings.rec_resolution)))
+        form.addRow("Resolução", self.rec_resolution)
+
+        self.rec_fps = QComboBox(box)
+        for fps in (30, 15):
+            self.rec_fps.addItem(f"{fps} por segundo", fps)
+        self.rec_fps.setCurrentIndex(max(0, self.rec_fps.findData(settings.rec_fps)))
+        form.addRow("Quadros", self.rec_fps)
+
+        self.rec_quality = QComboBox(box)
+        for key, label in (("alta", "Alta"), ("media", "Média"), ("leve", "Leve (arquivo menor)")):
+            self.rec_quality.addItem(label, key)
+        self.rec_quality.setCurrentIndex(max(0, self.rec_quality.findData(settings.rec_quality)))
+        form.addRow("Qualidade", self.rec_quality)
+
+        self.rec_compress = QCheckBox("Comprimir depois de gravar, como o HandBrake (x264)", box)
+        self.rec_compress.setChecked(settings.rec_compress)
+        form.addRow("", self.rec_compress)
+
+        self.ptt_hotkey = HotkeyEdit(settings.ptt_hotkey, box)
+        form.addRow("Tecla de apertar para falar", self.ptt_hotkey)
+
+        self.rec_countdown = QCheckBox("Contagem de 3 segundos antes de gravar", box)
+        self.rec_countdown.setChecked(settings.rec_countdown)
+        form.addRow("", self.rec_countdown)
+        return box
+
+    def _browse_videos(self) -> None:
+        d = QFileDialog.getExistingDirectory(self, "Pasta dos vídeos", self.video_dir.text())
+        if d:
+            self.video_dir.setText(d)
 
     def _browse(self) -> None:
         d = QFileDialog.getExistingDirectory(self, "Pasta padrão", self.save_dir.text())
@@ -113,13 +164,25 @@ class SettingsWindow(QDialog):
             self.save_dir.setText(d)
 
     def current(self) -> Settings:
-        return replace(
+        s = replace(
             self._settings,
             hotkey=self.hotkey.value,
             autostart=self.autostart.isChecked(),
             save_dir=self.save_dir.text().strip() or self._settings.save_dir,
             image_format=self.image_format.currentText(),
         )
+        if self.recording_box is not None:
+            s = replace(
+                s,
+                video_dir=self.video_dir.text().strip() or self._settings.video_dir,
+                rec_resolution=self.rec_resolution.currentData(),
+                rec_fps=self.rec_fps.currentData(),
+                rec_quality=self.rec_quality.currentData(),
+                rec_compress=self.rec_compress.isChecked(),
+                ptt_hotkey=self.ptt_hotkey.value,
+                rec_countdown=self.rec_countdown.isChecked(),
+            )
+        return s
 
     def _save(self) -> None:
         self.saved.emit(self.current())

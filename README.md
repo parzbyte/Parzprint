@@ -51,3 +51,17 @@ internet. O pacote do Linux precisa ser gerado numa máquina Linux.
 - Com o painel de texto aberto, arraste sobre o texto da imagem para selecionar um trecho ou
   clique duas vezes numa palavra. O botão Copiar aparece ao lado da seleção. `Ctrl+A`
   seleciona tudo e `Ctrl+C` copia o que estiver selecionado.
+
+## Gravação de tela (Windows)
+
+- Aperte o atalho de captura, escolha a área (ou clique sem arrastar para pegar a tela
+  inteira) e clique em Gravar. Depois de uma contagem de 3 segundos, a gravação começa.
+- A barrinha embaixo da área mostra o tempo e permite trocar o microfone, escolher o modo
+  (desligado, sempre ligado ou apertar para falar), ligar o som do computador, desenhar,
+  pausar e parar. A barrinha e a borda vermelha não aparecem no vídeo.
+- Em Desenhar, as setas, linhas e textos aparecem no vídeo na hora. `Esc` sai do modo de
+  desenho e o mouse volta a clicar nos programas.
+- Para parar, use o botão da barrinha, o atalho de captura ou "Parar gravação" na bandeja.
+- O vídeo vai para `Vídeos\Parzprint` em MP4. Com a compressão ligada, ele é recomprimido
+  com x264 em segundo plano, como no HandBrake. Resolução, quadros por segundo e qualidade
+  ficam em Configurações.
