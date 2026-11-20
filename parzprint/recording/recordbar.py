@@ -210,4 +210,5 @@ class RecordBar(QWidget):
     def place(self, area: QRect) -> None:
         self.adjustSize()
         screen = QGuiApplication.screenAt(area.center()) or QGuiApplication.primaryScreen()
-        self.move(bar_position(area, screen.geometry(), self.size()))
+        # availableGeometry deixa de fora a barra de tarefas, que fica por cima de tudo
+        self.move(bar_position(area, screen.availableGeometry(), self.size()))

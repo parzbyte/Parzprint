@@ -145,3 +145,20 @@ def test_frame_shows_countdown_number(qapp):
     assert f.count == 0
     assert f.geometry().contains(QRect(100, 100, 400, 300))
     f.close()
+
+
+def test_bar_place_avoids_the_taskbar(qapp, monkeypatch):
+    from PySide6.QtGui import QGuiApplication
+
+    class Screen:
+        def geometry(self):
+            return QRect(0, 0, 1920, 1080)
+
+        def availableGeometry(self):  # barra de tarefas de 48 px embaixo
+            return QRect(0, 0, 1920, 1032)
+
+    monkeypatch.setattr(QGuiApplication, "screenAt", staticmethod(lambda p: Screen()))
+    bar, *_ = make_bar(qapp)
+    bar.place(QRect(0, 0, 1920, 1080))
+    assert bar.y() + bar.height() <= 1032 and bar.y() >= 0
+    bar.close()
