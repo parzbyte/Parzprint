@@ -14,8 +14,11 @@ from .clock import RecordingClock
 
 MAX_BACKLOG = SAMPLE_RATE  # no máximo 1 s guardado por fonte; o excesso é descartado
 MIC_FAIL_READS = 25  # ~0,5 s com erro e sem som até considerar que o microfone caiu
-CUSHION = SAMPLE_RATE * 10 // 1000  # folga de 10 ms entre a chegada e o uso
-CUSHION_MAX = SAMPLE_RATE * 30 // 1000  # passou de 30 ms de atraso: corta de volta para a folga
+# Atraso acumulado só é cortado quando passa de 300 ms (desvio lento do relógio do aparelho).
+# Abaixo disso é a oscilação normal da leitura, que com o PC ocupado chega a dezenas de ms:
+# cortar ali picota o áudio.
+CUSHION = SAMPLE_RATE * 100 // 1000
+CUSHION_MAX = SAMPLE_RATE * 300 // 1000
 
 
 # ---------------------------------------------------------------- dispositivos

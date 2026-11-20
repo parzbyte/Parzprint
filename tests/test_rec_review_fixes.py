@@ -164,7 +164,9 @@ def test_capture_trims_backlog_to_cushion(qapp):
     t[0] = 0.02
     sys_.pending = 48000  # 1 s de atraso acumulado
     cap.tick()
-    assert len(cap._sys_buf) <= 48000 * 0.06
+    from parzprint.recording.audio import CUSHION
+
+    assert len(cap._sys_buf) <= CUSHION
 
 
 def test_loopback_failure_mid_recording_warns_once(qapp):
@@ -376,3 +378,26 @@ def test_bar_device_change_while_off_keeps_mic_closed(qapp):
     assert ("mic", "m2") not in audio.calls and s.mic_device == "m2"
 
 
+
+
+def test_jittery_ticks_do_not_lose_audio(qapp):
+    """Com o computador ocupado, a leitura do áudio atrasa e chega em rajadas: nada pode sumir."""
+    from parzprint.recording.audio import AudioCapture
+    from parzprint.recording.clock import RecordingClock
+
+    from tests.test_rec_audio_devices import FakeSource
+
+    t = [0.0]
+    mic, sys_ = FakeSource(0.0), FakeSource(0.3)
+    cap = AudioCapture(None, True, mic_factory=lambda d: mic, loopback_factory=lambda: sys_)
+    blocks = []
+    cap.block_ready.connect(lambda data, us: blocks.append(np.frombuffer(data, np.float32).reshape(-1, 2)))
+    clock = RecordingClock(time_fn=lambda: t[0])
+    clock.start()
+    cap.start(clock, timer=False)
+    for i in range(1, 51):  # 3 s, leitura a cada 60 ms em vez de 20 ms
+        t[0] = 0.06 * i
+        sys_.pending = 2880
+        cap.tick()
+    out = np.concatenate(blocks)[4800:]  # ignora o começo
+    assert np.all(np.abs(out[:, 0] - 0.3) < 1e-6), "houve buraco ou corte no áudio"
