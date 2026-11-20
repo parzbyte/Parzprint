@@ -207,6 +207,8 @@ class GlobalHotkey:
             listener = keyboard.Listener(on_press=on_press, on_release=on_release)
             listener.daemon = True
             listener.start()
+            # no Linux, parar um listener que ainda não terminou de abrir trava a conexão com o X
+            listener.wait()
         except Exception as e:  # noqa: BLE001
             raise HotkeyError(f"Não foi possível registrar o atalho {self.hotkey}: {e}") from e
         self._listener = listener
