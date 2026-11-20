@@ -13,6 +13,7 @@ from .audio_mix import BLOCK_FRAMES, CHANNELS, SAMPLE_RATE, Resampler, mix_block
 from .clock import RecordingClock
 
 MAX_BACKLOG = SAMPLE_RATE  # no máximo 1 s guardado por fonte; o excesso é descartado
+MIC_FAIL_READS = 25  # ~0,5 s com erro e sem som até considerar que o microfone caiu
 CUSHION = SAMPLE_RATE * 10 // 1000  # folga de 10 ms entre a chegada e o uso
 CUSHION_MAX = SAMPLE_RATE * 30 // 1000  # passou de 30 ms de atraso: corta de volta para a folga
 
@@ -83,6 +84,7 @@ class MicSource:
         self._io = None
         self._fmt = None
         self._failed = False
+        self._bad_reads = 0
 
     def start(self) -> None:
         from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
@@ -110,9 +112,16 @@ class MicSource:
         self._resampler = Resampler(fmt.sampleRate(), max(1, fmt.channelCount()))
         self._io.readyRead.connect(self._read_io)
 
-    def _check_error(self) -> None:
-        # o sinal stateChanged não chega ao Python nesta versão do PySide; confere a cada leitura
-        if self._source is not None and not self._failed and is_fatal_audio_error(self._source.error()):
+    def _check_error(self, got_audio: bool) -> None:
+        # o sinal stateChanged não chega ao Python nesta versão do PySide; confere a cada leitura.
+        # Logo ao abrir o Qt pode marcar um erro que some sozinho: só conta se persistir sem som.
+        if self._source is None or self._failed:
+            return
+        if got_audio or not is_fatal_audio_error(self._source.error()):
+            self._bad_reads = 0
+            return
+        self._bad_reads += 1
+        if self._bad_reads >= MIC_FAIL_READS:
             self._failed = True
             self._fail("O microfone parou de responder")
 
@@ -147,9 +156,10 @@ class MicSource:
         self._fifo.push(self._resampler.feed(data))
 
     def read(self) -> np.ndarray:
-        self._check_error()
         self._read_io()
-        return self._fifo.take()
+        data = self._fifo.take()
+        self._check_error(len(data) > 0)
+        return data
 
     def stop(self) -> None:
         if self._source is not None:

@@ -132,14 +132,12 @@ def test_only_real_errors_count_as_mic_failure():
     assert is_fatal_audio_error(QAudio.Error.OpenError)
 
 
-def test_mic_source_reports_failure_from_read(qapp):
-    from PySide6.QtMultimedia import QAudio
-
+def _mic_with(errors_then):
     from parzprint.recording.audio import MicSource
 
     class Src:
         def __init__(self):
-            self.err = QAudio.Error.NoError
+            self.err = None
 
         def error(self):
             return self.err
@@ -148,9 +146,32 @@ def test_mic_source_reports_failure_from_read(qapp):
     m._source = Src()
     warnings = []
     m.on_error = warnings.append
+    return m, warnings
+
+
+def test_mic_transient_error_with_audio_is_not_a_failure(qapp):
+    from PySide6.QtMultimedia import QAudio
+
+    m, warnings = _mic_with(None)
+    m._source.err = QAudio.Error.IOError  # o Qt marca um erro logo ao abrir, que some sozinho
+    m.read()
+    m._source.err = QAudio.Error.NoError
+    for _ in range(40):
+        m._fifo.push(np.zeros((960, 2), np.float32))
+        m.read()
+    assert warnings == []
+
+
+def test_mic_source_reports_failure_from_read(qapp):
+    from PySide6.QtMultimedia import QAudio
+
+    from parzprint.recording.audio import MIC_FAIL_READS
+
+    m, warnings = _mic_with(None)
+    m._source.err = QAudio.Error.NoError
     m.read()
     assert warnings == []
     m._source.err = QAudio.Error.IOError
-    m.read()
-    m.read()
+    for _ in range(MIC_FAIL_READS + 5):
+        m.read()
     assert warnings == ["O microfone parou de responder"]
