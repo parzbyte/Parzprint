@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from enum import Enum
 
 from PySide6.QtCore import QByteArray, QRectF, QSize, Qt, Signal
@@ -196,6 +197,7 @@ class BottomToolbar(_Bar):
     print_requested = Signal()
     text_requested = Signal()
     close_requested = Signal()
+    record_requested = Signal()
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
@@ -210,8 +212,11 @@ class BottomToolbar(_Bar):
             ("copy", "Copiar imagem (Ctrl+C)", self.copy_requested),
             ("print", "Imprimir", self.print_requested),
             ("ocr", "Ler o texto da imagem", self.text_requested),
+            ("record", "Gravar a tela", self.record_requested),
             ("close", "Fechar (Esc)", self.close_requested),
         ]
+        if sys.platform != "win32":  # gravação só no Windows por enquanto
+            specs = [s for s in specs if s[0] != "record"]
         self.buttons: dict[str, QToolButton] = {}
         for icon, tip, signal in specs:
             b = _button(self, make_icon(icon), tip)

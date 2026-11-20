@@ -1,7 +1,7 @@
 """Testes do editor numa janela Qt sem tela (offscreen)."""
 
 from PIL import Image
-from PySide6.QtCore import QPointF, QRect, Qt
+from PySide6.QtCore import QPoint, QPointF, QRect, Qt
 from PySide6.QtTest import QTest
 
 from parzprint.annotations import Point, Rect
@@ -274,3 +274,38 @@ def test_ctrl_c_with_text_selected_closes_capture(qapp):
     QTest.keyClick(ov, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
     assert _clipboard() == "olá mundo\nsegunda"
     assert cancelled == [True]
+
+
+def test_click_without_drag_selects_whole_monitor(qapp):
+    img = Image.new("RGB", (400, 300), "white")
+    ov = SelectionOverlay(Monitor(1, 0, 0, 400, 300, img))
+    ov.show()
+    got = []
+    ov.selected.connect(got.append)
+    QTest.mouseClick(ov, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(100, 100))
+    assert ov.sel == ov.screen_rect() and got == [QRect(0, 0, 400, 300)]
+    ov.close()
+
+
+def test_record_button_emits_area_and_items(qapp, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    ov, ed, cancelled = make_editor(qapp)
+    r = Rect(Point(1, 1), Point(9, 9), "#000000", 3)
+    ed.stack.add(r)
+    got = []
+    ed.record_requested.connect(lambda mon, area, items: got.append((mon, area, items)))
+    ed.bottom.buttons["record"].click()
+    assert got and got[0][0] is ov.monitor and got[0][1] == QRect(50, 50, 200, 150) and got[0][2] == [r]
+    assert cancelled == [True]
+
+
+def test_record_button_hidden_off_windows(qapp, monkeypatch):
+    import sys
+
+    from parzprint.toolbar import BottomToolbar
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    bar = BottomToolbar(None)
+    assert "record" not in bar.buttons

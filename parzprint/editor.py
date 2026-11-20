@@ -41,6 +41,7 @@ QPushButton:hover { background: #2196F3; }
 
 class Editor(QObject):
     closed = Signal()
+    record_requested = Signal(object, QRect, list)  # Monitor, área global, desenhos
 
     def __init__(self, overlay, settings: Settings | None = None, engine_provider=None):
         super().__init__(overlay)
@@ -78,6 +79,7 @@ class Editor(QObject):
         self.bottom.copy_requested.connect(self.copy)
         self.bottom.print_requested.connect(self.print_)
         self.bottom.text_requested.connect(self.request_text)
+        self.bottom.record_requested.connect(self.record)
         self._last_sel = QRect(overlay.sel)
         overlay.selection_changed.connect(self._on_selection_changed)
         overlay.editor = self
@@ -568,6 +570,14 @@ class Editor(QObject):
         self.ov.setFocus()
 
     # ---------- fim ----------
+    def record(self) -> None:
+        """Entrega a área e os desenhos para a gravação e fecha a captura."""
+        self._finish_text()
+        if self.text_mode:
+            self.close_panel()
+        self.record_requested.emit(self.ov.monitor, self.ov.selection_global(), self.stack.items())
+        self.close()
+
     def close(self) -> None:
         self._finish_text()
         self.closed.emit()

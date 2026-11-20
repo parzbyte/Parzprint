@@ -183,10 +183,8 @@ class SelectionOverlay(QWidget):
             return
         if self.mode is Mode.DRAGGING:
             if self.sel.width() < MIN_SIZE or self.sel.height() < MIN_SIZE:
-                self.mode = Mode.IDLE
-                self.sel = QRect()
-                self.update()
-                return
+                # um clique sem arrastar escolhe o monitor inteiro
+                self.sel = self.screen_rect()
             self.mode = Mode.SELECTED
             self.update()
             self.selected.emit(self.selection_global())
