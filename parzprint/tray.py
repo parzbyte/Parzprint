@@ -19,11 +19,14 @@ class Tray(QSystemTrayIcon):
     capture_requested = Signal()
     settings_requested = Signal()
     quit_requested = Signal()
+    stop_recording_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(app_icon(), parent)
         self.setToolTip("Parzprint")
         menu = QMenu()
+        self._stop_action = menu.addAction("Parar gravação", self.stop_recording_requested.emit)
+        self._stop_action.setVisible(False)
         menu.addAction("Capturar", self.capture_requested.emit)
         menu.addAction("Configurações", self.settings_requested.emit)
         menu.addSeparator()
@@ -38,6 +41,9 @@ class Tray(QSystemTrayIcon):
     def _on_activated(self, reason) -> None:
         if reason in (QSystemTrayIcon.ActivationReason.DoubleClick, QSystemTrayIcon.ActivationReason.Trigger):
             self.capture_requested.emit()
+
+    def set_recording(self, on: bool) -> None:
+        self._stop_action.setVisible(on)
 
     def notify(self, title: str, text: str) -> None:
         self.showMessage(title, text, QSystemTrayIcon.MessageIcon.Information, 4000)

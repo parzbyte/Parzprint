@@ -129,3 +129,27 @@ def test_only_real_errors_count_as_mic_failure():
     assert is_fatal_audio_error(QAudio.Error.IOError)
     assert is_fatal_audio_error(QAudio.Error.FatalError)
     assert is_fatal_audio_error(QAudio.Error.OpenError)
+
+
+def test_mic_source_reports_failure_from_read(qapp):
+    from PySide6.QtMultimedia import QAudio
+
+    from parzprint.recording.audio import MicSource
+
+    class Src:
+        def __init__(self):
+            self.err = QAudio.Error.NoError
+
+        def error(self):
+            return self.err
+
+    m = MicSource("x")
+    m._source = Src()
+    warnings = []
+    m.on_error = warnings.append
+    m.read()
+    assert warnings == []
+    m._source.err = QAudio.Error.IOError
+    m.read()
+    m.read()
+    assert warnings == ["O microfone parou de responder"]

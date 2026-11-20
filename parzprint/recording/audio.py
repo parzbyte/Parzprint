@@ -100,11 +100,11 @@ class MicSource:
             fmt = device.preferredFormat()
         self._fmt = fmt
         self._source = QAudioSource(device, fmt)
-        self._source.stateChanged.connect(self._on_state)
         self._io = self._source.start()
         self._io.readyRead.connect(self._read_io)
 
-    def _on_state(self, state) -> None:
+    def _check_error(self) -> None:
+        # o sinal stateChanged não chega ao Python nesta versão do PySide; confere a cada leitura
         if self._source is not None and not self._failed and is_fatal_audio_error(self._source.error()):
             self._failed = True
             self._fail("O microfone parou de responder")
@@ -140,6 +140,7 @@ class MicSource:
         self._fifo.push(to_stereo_48k(data, self._fmt.sampleRate(), ch))
 
     def read(self) -> np.ndarray:
+        self._check_error()
         self._read_io()
         return self._fifo.take()
 

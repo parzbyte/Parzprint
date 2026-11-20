@@ -88,6 +88,26 @@ def to_win32(hotkey: str) -> tuple[int, int]:
     return flags, vk
 
 
+_MOD_VK = {"Ctrl": 0x11, "Shift": 0x10, "Alt": 0x12, "Win": 0x5B}
+
+
+def _async_key_state(vk: int) -> bool:
+    import ctypes
+
+    return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
+
+
+def is_key_down(hotkey: str, state_fn: Callable[[int], bool] | None = None) -> bool:
+    """True se todas as teclas da combinação estão apertadas agora (Windows)."""
+    state_fn = state_fn or _async_key_state
+    try:
+        _flags, vk = to_win32(hotkey)
+    except HotkeyError:
+        return False
+    *mods, _key = hotkey.split("+")
+    return all(state_fn(_MOD_VK[m]) for m in mods) and state_fn(vk)
+
+
 class _WindowsHotkey(threading.Thread):
     """Registra o atalho no Windows numa thread com o próprio laço de mensagens."""
 

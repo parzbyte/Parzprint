@@ -9,6 +9,7 @@ from .autostart import set_autostart
 from .editor import Editor
 from .hotkey import GlobalHotkey, HotkeyError, is_wayland
 from .ocr import get_engine
+from .recording.controller import RecordingController
 from .overlay import CaptureSession
 from .settings import Settings, load_settings, save_settings
 from .settings_window import SettingsWindow
@@ -37,7 +38,11 @@ class App(QObject):
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray.show()
 
-        self._hotkey_pressed.connect(self.capture)
+        self.recorder = RecordingController(self.settings, self.tray, self._save_from_recording, parent=self)
+        self.tray.stop_recording_requested.connect(self.recorder.stop)
+        self.tray.messageClicked.connect(self.recorder.message_clicked)
+
+        self._hotkey_pressed.connect(self.on_hotkey)
         self._start_hotkey()
         self._apply_autostart()
 
@@ -68,14 +73,28 @@ class App(QObject):
     # ---------- ações ----------
     def handle_message(self, message: str) -> None:
         if message == "capture":
-            self.capture()
+            self.on_hotkey()
         elif message == "settings":
             self.open_settings()
         else:
             self.tray.notify("Parzprint", "O Parzprint já está aberto na bandeja.")
 
+    def on_hotkey(self) -> None:
+        """Durante uma gravação, o atalho de captura para a gravação."""
+        if self.recorder.active:
+            self.recorder.stop()
+        else:
+            self.capture()
+
+    def _save_from_recording(self, settings: Settings) -> None:
+        self.settings = settings
+        try:
+            save_settings(settings)
+        except OSError as e:
+            self.tray.notify("Parzprint", f"Não foi possível salvar as configurações: {e}")
+
     def capture(self) -> None:
-        if self.session is not None:
+        if self.session is not None or self.recorder.active:
             return
         session = CaptureSession(parent=self)
         session.region_ready.connect(self._on_region)
@@ -86,7 +105,8 @@ class App(QObject):
         QTimer.singleShot(150, session.start)
 
     def _on_region(self, overlay, _rect) -> None:
-        Editor(overlay, self.settings, engine_provider=lambda: get_engine(self.settings.ocr_engine))
+        editor = Editor(overlay, self.settings, engine_provider=lambda: get_engine(self.settings.ocr_engine))
+        editor.record_requested.connect(self.recorder.start)
 
     def _on_session_finished(self) -> None:
         if self.session is not None:
@@ -114,6 +134,7 @@ class App(QObject):
     def apply_settings(self, new: Settings) -> None:
         old = self.settings
         self.settings = new
+        self.recorder.settings = new
         try:
             save_settings(new)
         except OSError as e:
@@ -124,6 +145,7 @@ class App(QObject):
             self._apply_autostart()
 
     def quit(self) -> None:
+        self.recorder.shutdown()
         if self.hotkey is not None:
             self.hotkey.stop()
         if self.session is not None:
