@@ -129,7 +129,10 @@ def test_translate_invalid_values_fall_back(tmp_path):
     assert s.translate_recent == ["en", "ja"] and s.translate_source == "auto"
 
 
-def test_hotkey_conflict():
+def test_hotkey_conflict(monkeypatch):
+    import parzprint.settings as settings_mod
+
+    monkeypatch.setattr(settings_mod.sys, "platform", "win32")
     s = Settings()
     assert hotkey_conflict(s) is None
     s.translate_hotkey = s.hotkey
@@ -150,12 +153,27 @@ def test_translate_unhashable_values_fall_back(tmp_path):
         assert load_settings(p).translate_recent == []
 
 
-def test_translate_hotkey_conflict_only_for_translator():
+def test_translate_hotkey_conflict_only_for_translator(monkeypatch):
+    import parzprint.settings as settings_mod
     from parzprint.settings import translate_hotkey_conflicts
 
+    monkeypatch.setattr(settings_mod.sys, "platform", "win32")
     s = Settings()
     assert not translate_hotkey_conflicts(s)
     s.ptt_hotkey = s.hotkey
     assert not translate_hotkey_conflicts(s)
     s.translate_hotkey = s.hotkey
     assert translate_hotkey_conflicts(s)
+
+
+def test_hotkey_conflict_ignores_ptt_without_recording(monkeypatch):
+    import parzprint.settings as settings_mod
+
+    monkeypatch.setattr(settings_mod.sys, "platform", "linux")
+    s = Settings()
+    s.ptt_hotkey = s.hotkey
+    assert hotkey_conflict(s) is None
+    s.translate_hotkey = s.hotkey
+    assert hotkey_conflict(s) == f"O atalho {s.hotkey} está repetido em: captura e tradutor."
+    monkeypatch.setattr(settings_mod.sys, "platform", "win32")
+    assert "aperte para falar" in hotkey_conflict(s)

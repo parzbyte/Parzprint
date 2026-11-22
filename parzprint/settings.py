@@ -67,6 +67,9 @@ class Settings:
 
 
 def _hotkey_names(s: Settings) -> tuple[tuple[str, str], ...]:
+    # a gravação, com o aperte para falar, só existe no Windows
+    if sys.platform != "win32":
+        return (("captura", s.hotkey), ("tradutor", s.translate_hotkey))
     return (("captura", s.hotkey), ("aperte para falar", s.ptt_hotkey), ("tradutor", s.translate_hotkey))
 
 
