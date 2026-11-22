@@ -205,10 +205,12 @@ class TranslatorWindow(QWidget):
             self._target = self.settings.translate_target
             self._fill_boxes()
             self.pin_button.setChecked(self.settings.translate_pinned)
-            width, height = self.settings.translate_size
-            self.resize(width, height)
             screen = QGuiApplication.screenAt(anchor.center()) or QGuiApplication.primaryScreen()
-            self.move(place_window(anchor, self.size(), screen.availableGeometry()))
+            area = screen.availableGeometry()
+            width, height = self.settings.translate_size
+            # o tamanho salvo pode ser de uma tela maior
+            self.resize(min(width, area.width()), min(height, area.height()))
+            self.move(place_window(anchor, self.size(), area))
         self._live = auto
         self._pending = None
         self._translation = ""

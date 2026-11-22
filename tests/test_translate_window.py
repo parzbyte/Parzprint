@@ -327,3 +327,13 @@ def test_place_window():
     assert place_window(QRect(950, 790, 1, 1), size, avail) == QPoint(700, 584)
     # área com deslocamento (segundo monitor) e ponto fora dela
     assert place_window(QRect(-50, -50, 1, 1), size, QRect(0, 40, 1000, 760)) == QPoint(0, 40)
+
+
+def test_saved_size_fits_screen(qapp):
+    win, _, _ = make(qapp, translate_size=[9000, 9000])
+    win.open("hello", ANCHOR, auto=False)
+    screen = QGuiApplication.screenAt(ANCHOR.center()) or QGuiApplication.primaryScreen()
+    area = screen.availableGeometry()
+    assert win.width() <= area.width() and win.height() <= area.height()
+    assert area.contains(win.frameGeometry().topLeft())
+    win.close()
