@@ -22,6 +22,17 @@ WAYLAND_HINT = (
 )
 TRANSLATE_PRIVACY = "Para traduzir, o texto é enviado ao Google Tradutor. Nada sai do computador sem você pedir."
 
+_GENERAL_FIELDS = ("hotkey", "autostart", "save_dir", "image_format", "translate_hotkey", "translate_grab_selection")
+_RECORDING_FIELDS = (
+    "video_dir", "rec_resolution", "rec_fps", "rec_quality", "rec_compress", "ptt_hotkey", "rec_countdown",
+)
+
+
+def owned_fields() -> tuple[str, ...]:
+    """Campos que a janela de configurações edita; os outros ficam com quem os salvou por último."""
+    return _GENERAL_FIELDS + (_RECORDING_FIELDS if sys.platform == "win32" else ())
+
+
 _QT_MODS = (
     (Qt.KeyboardModifier.ControlModifier, "Ctrl"),
     (Qt.KeyboardModifier.ShiftModifier, "Shift"),

@@ -67,3 +67,14 @@ def test_settings_window_refuses_repeated_hotkey(qapp, monkeypatch):
     assert got == [] and warned and "repetido" in warned[0]
     assert win.isVisible() or win.result() == 0
     win.close()
+
+
+def test_settings_window_translator_hotkey_on_wayland(qapp, monkeypatch):
+    import parzprint.settings_window as sw
+
+    monkeypatch.setattr(sw, "is_wayland", lambda: True)
+    win = SettingsWindow(Settings())
+    assert not win.translate_hotkey.isEnabled()
+    texts = [w.text() for w in win.translate_box.findChildren(QLabel)]
+    assert any("parzprint --translate" in t for t in texts)
+    win.close()

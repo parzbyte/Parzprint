@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import sys
+from dataclasses import replace
 
 from PySide6.QtCore import QObject, QRect, QSize, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QCursor
@@ -15,12 +17,24 @@ from .ocr import get_engine
 from .recording.controller import RecordingController
 from .overlay import CaptureSession
 from .settings import Settings, load_settings, save_settings
-from .settings_window import SettingsWindow
+from .settings_window import SettingsWindow, owned_fields
 from .single_instance import SingleInstance
 from .translate.google import GoogleTranslator
 from .translate.grab import QtBackend, WinBackend, grab
 from .translate.window import TranslatorWindow
 from .tray import Tray, app_icon
+
+log = logging.getLogger(__name__)
+
+
+def _safe_grab(backend_factory, grab_selection: bool) -> tuple[str, str]:
+    """Texto e origem; numa falha, devolve vazio para a janela abrir mesmo assim."""
+    try:
+        got = grab(backend_factory(), grab_selection)
+        return got.text, got.source
+    except Exception:  # noqa: BLE001
+        log.exception("Falha ao pegar o texto para traduzir")
+        return "", "none"
 
 
 class App(QObject):
@@ -41,6 +55,7 @@ class App(QObject):
         self.translate_hotkey: GlobalHotkey | None = None
         self.translator: GoogleTranslator | None = None
         self.translator_window: TranslatorWindow | None = None
+        self._grabbing = False
 
         self.tray = Tray(self)
         self.tray.capture_requested.connect(self.capture)
@@ -118,22 +133,18 @@ class App(QObject):
 
     # ---------- tradutor ----------
     def translate_shortcut(self) -> None:
+        if self._grabbing:
+            return
+        self._grabbing = True
         grab_selection = self.settings.translate_grab_selection
         if sys.platform == "win32":
             # o Ctrl+C e a espera pela área de transferência não podem travar a interface
-            QThreadPool.globalInstance().start(lambda: self._grab_in_pool(grab_selection))
+            QThreadPool.globalInstance().start(lambda: self._grabbed.emit(*_safe_grab(WinBackend, grab_selection)))
         else:
-            got = grab(QtBackend(), grab_selection)
-            self._on_grabbed(got.text, got.source)
-
-    def _grab_in_pool(self, grab_selection: bool) -> None:
-        try:
-            got = grab(WinBackend(), grab_selection)
-            self._grabbed.emit(got.text, got.source)
-        except Exception:  # noqa: BLE001
-            self._grabbed.emit("", "none")
+            self._on_grabbed(*_safe_grab(QtBackend, grab_selection))
 
     def _on_grabbed(self, text: str, source: str) -> None:
+        self._grabbing = False
         self.open_translator(text, self._cursor_anchor(), auto=(source == "selection"))
 
     def _translate_from_tray(self) -> None:
@@ -201,6 +212,8 @@ class App(QObject):
 
     def apply_settings(self, new: Settings) -> None:
         old = self.settings
+        # a janela de configurações não é modal: idiomas e tamanho do tradutor podem ter mudado depois que ela abriu
+        new = replace(old, **{name: getattr(new, name) for name in owned_fields()})
         self.settings = new
         self.recorder.settings = new
         try:

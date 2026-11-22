@@ -203,7 +203,7 @@ def test_apply_settings_updates_window_and_rebinds(env):
     app.open_translator("", QRect(0, 0, 1, 1), auto=False)
     new = replace(app.settings, translate_hotkey="Ctrl+Alt+U")
     app.apply_settings(new)
-    assert FakeWindow.made[0].settings is new
+    assert FakeWindow.made[0].settings is app.settings and app.settings == new
     assert app.translate_hotkey.hotkey == "Ctrl+Alt+U"
 
 
@@ -252,3 +252,72 @@ def test_quit_without_translator(env):
     app = build()
     app.quit()
     assert FakeTranslator.made == []
+
+
+def test_settings_window_save_keeps_translator_changes(env):
+    build, *_ = env
+    app = build()
+    app.open_settings()
+    win = app.settings_window
+    app.open_translator("", QRect(0, 0, 1, 1), auto=False)
+    tw = FakeWindow.made[0]
+    tw.on_settings_changed(replace(app.settings, translate_target="en", translate_recent=["en"], translate_pinned=True))
+    win.autostart.setChecked(not app.settings.autostart)
+    app.apply_settings(win.current())
+    s = app.settings
+    assert (s.translate_target, s.translate_recent, s.translate_pinned) == ("en", ["en"], True)
+    assert s.autostart == win.autostart.isChecked()
+    assert tw.settings.translate_target == "en"
+    win.close()
+
+
+def test_grab_failure_opens_empty_and_logs(env, monkeypatch, caplog):
+    build, *_ = env
+    app = build()
+
+    def boom(backend, grab_selection):
+        raise RuntimeError("falhou")
+
+    monkeypatch.setattr(app_mod, "grab", boom)
+    app.translate_shortcut()
+    assert wait_until(lambda: FakeWindow.made and FakeWindow.made[0].opened)
+    assert FakeWindow.made[0].opened[-1][0] == "" and FakeWindow.made[0].opened[-1][2] is False
+    assert any("falhou" in (r.exc_text or str(r.exc_info)) for r in caplog.records)
+
+
+def test_grab_failure_off_windows(env, monkeypatch):
+    import sys
+
+    build, *_ = env
+    app = build()
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    def boom(backend, grab_selection):
+        raise RuntimeError("falhou")
+
+    monkeypatch.setattr(app_mod, "grab", boom)
+    app.translate_shortcut()
+    assert FakeWindow.made[0].opened[-1][0] == ""
+
+
+def test_second_press_while_grabbing_is_ignored(env, monkeypatch):
+    import threading
+
+    build, result, _, _, grabs = env
+    app = build()
+    gate = threading.Event()
+
+    def slow(backend, grab_selection):
+        grabs.append(backend)
+        gate.wait(3)
+        return Grabbed("oi", "selection")
+
+    monkeypatch.setattr(app_mod, "grab", slow)
+    monkeypatch.setattr(app_mod.sys, "platform", "win32")
+    app.translate_shortcut()
+    app.translate_shortcut()
+    gate.set()
+    assert wait_until(lambda: FakeWindow.made and FakeWindow.made[0].opened)
+    assert len(grabs) == 1 and len(FakeWindow.made[0].opened) == 1
+    app.translate_shortcut()
+    assert wait_until(lambda: len(FakeWindow.made[0].opened) == 2)
