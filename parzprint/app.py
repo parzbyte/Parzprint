@@ -57,6 +57,9 @@ class App(QObject):
         self.translator: GoogleTranslator | None = None
         self.translator_window: TranslatorWindow | None = None
         self._grabbing = False
+        self._quitting = False
+        # pool próprio para o quit esperar a thread de pegar texto
+        self._grab_pool = QThreadPool(self)
 
         self.tray = Tray(self)
         self.tray.capture_requested.connect(self.capture)
@@ -155,12 +158,14 @@ class App(QObject):
         grab_selection = self.settings.translate_grab_selection
         if sys.platform == "win32":
             # o Ctrl+C e a espera pela área de transferência não podem travar a interface
-            QThreadPool.globalInstance().start(lambda: self._grabbed.emit(*_safe_grab(WinBackend, grab_selection)))
+            self._grab_pool.start(lambda: self._grabbed.emit(*_safe_grab(WinBackend, grab_selection)))
         else:
             self._on_grabbed(*_safe_grab(QtBackend, grab_selection))
 
     def _on_grabbed(self, text: str, source: str) -> None:
         self._grabbing = False
+        if self._quitting:
+            return
         self.open_translator(text, self._cursor_anchor(), auto=(source == "selection"))
 
     def _translate_from_tray(self) -> None:
@@ -259,6 +264,8 @@ class App(QObject):
             self.hotkey.stop()
         if self.translate_hotkey is not None:
             self.translate_hotkey.stop()
+        self._quitting = True
+        self._grab_pool.waitForDone(1000)
         if self.translator_window is not None:
             self.translator_window.close()
         if self.translator is not None:

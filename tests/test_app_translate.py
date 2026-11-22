@@ -372,3 +372,32 @@ def test_other_conflict_keeps_translate_hotkey(env, monkeypatch):
     app = build()
     assert app.translate_hotkey is not None and app.translate_hotkey.started
     assert not any("tradutor é igual" in n for n in notes)
+
+
+def test_quit_waits_for_grab_thread(env, monkeypatch):
+    import threading
+
+    build, *_ = env
+    app = build()
+    gate, done = threading.Event(), threading.Event()
+
+    def slow(backend, grab_selection):
+        gate.wait(3)
+        done.set()
+        return Grabbed("oi", "selection")
+
+    monkeypatch.setattr(app_mod, "grab", slow)
+    monkeypatch.setattr(app_mod.sys, "platform", "win32")
+    app.translate_shortcut()
+    assert wait_until(lambda: app._grab_pool.activeThreadCount() == 1)
+    threading.Timer(0.2, gate.set).start()
+    app.quit()
+    assert done.is_set() and app._grab_pool.activeThreadCount() == 0
+
+
+def test_grab_arriving_after_quit_is_ignored(env):
+    build, *_ = env
+    app = build()
+    app.quit()
+    app._on_grabbed("oi", "selection")
+    assert FakeWindow.made == []
