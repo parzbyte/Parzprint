@@ -167,6 +167,14 @@ os idiomas já preenchidos.
   feche a captura.
 - **Durante uma gravação:** o tradutor funciona normalmente, e a janela fica fora do vídeo,
   com o mesmo recurso que já esconde a barra de gravação. Decisão minha.
+- **Atalho do print (pedido do David):** na barra de ferramentas da captura, ao lado de
+  "Ler o texto da imagem" e "Gravar a tela", entra o botão "Traduzir a imagem". O David
+  aperta o atalho do print, escolhe a área e clica nele. O app lê o texto da área com o
+  Indra (reaproveitando a leitura se o OCR já rodou nessa captura), mostrando "Lendo o
+  texto..." no lugar de sempre. Com o texto pronto, a captura fecha e a janela de tradução
+  abre junto da área escolhida, já traduzindo: o texto acabou de ser escolhido por ele, então
+  não precisa de Enter. Se o Indra não achar texto, a captura continua aberta com o aviso
+  "Não achei texto nessa área." Se o OCR falhar, aparece o mesmo erro do botão de texto.
 - **Bandeja:** item "Traduzir" abre a janela vazia, pronta para digitar ou colar.
 - **Linha de comando:** `parzprint --translate` faz o mesmo que o atalho (para o Wayland e
   para quem quiser ligar a outro atalho). Usa a instância que já está aberta, como o
