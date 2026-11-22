@@ -49,11 +49,23 @@ def request_parts(
 
 def parse(raw: bytes) -> Result:
     """Junta os trechos traduzidos e lê o idioma detectado."""
+    # página HTML de consentimento ou de limite, mesmo com status 200
+    if not raw.lstrip().startswith(b"["):
+        raise TranslateError("refused", "resposta não é JSON")
     try:
         data = json.loads(raw)
-        parts = [chunk[0] for chunk in data[0]]
-        if not all(isinstance(part, str) for part in parts):
-            raise TypeError("trecho sem texto")
+        chunks = data[0]
+        if not isinstance(chunks, list):
+            raise TypeError("sem lista de trechos")
+        parts = []
+        for chunk in chunks:
+            if not isinstance(chunk, list):
+                raise TypeError("trecho não é lista")
+            if not chunk or chunk[0] is None:
+                continue
+            if not isinstance(chunk[0], str):
+                raise TypeError("trecho sem texto")
+            parts.append(chunk[0])
         detected = data[2] if len(data) > 2 else None
     except (ValueError, TypeError, IndexError, KeyError) as exc:
         raise TranslateError("format", str(exc)) from exc

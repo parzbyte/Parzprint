@@ -33,11 +33,34 @@ def test_parse_blank_is_empty_not_error():
     assert parse(FIX("vazio.json")).text.strip() == ""
 
 
-@pytest.mark.parametrize("raw", [b"", b"<html>", b"{}", b"[null]", b"[[[1]]]"])
+@pytest.mark.parametrize("raw", [b"[null]", b"[[[1]]]", b"  [[1]]", b'[["x"]]', b"[[", b"[]"])
 def test_parse_bad_format(raw):
     with pytest.raises(TranslateError) as e:
         parse(raw)
     assert e.value.kind == "format"
+
+
+@pytest.mark.parametrize("raw", [b"", b"<html><body>Antes de continuar</body></html>", b"{}", b"Too many requests"])
+def test_parse_not_json_is_refused(raw):
+    """Página de consentimento ou de limite com status 200 não é defeito de formato."""
+    with pytest.raises(TranslateError) as e:
+        parse(raw)
+    assert e.value.kind == "refused"
+
+
+def test_parse_skips_chunks_without_text():
+    r = parse('[[["Olá ","Hello ",null],[null,null,"Halo"],["mundo","world",null]],null,"en"]'.encode())
+    assert r == Result("Olá mundo", "en")
+
+
+def test_translator_200_html_refused(server):
+    server["body"] = b"<html>consentimento</html>"
+    tr = GoogleTranslator(server["url"])
+    done, fail = _spy(tr)
+    rid = tr.translate("oi", "auto", "en")
+    assert wait_until(lambda: done or fail)
+    assert fail == [(rid, "refused")] and not done
+    tr.shutdown()
 
 
 def test_clip():
