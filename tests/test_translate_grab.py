@@ -126,3 +126,38 @@ def test_alt_solto_sozinho_nao_abre_o_menu_do_programa():
     backend.mask_alt()
     assert [vk for vk, _ in fake.sent] == [0x11, 0xFF, 0xFF]
     assert [flags for _, flags in fake.sent] == [0x2, 0, 0x2]
+
+
+@pytest.mark.parametrize("name", ["ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS", "mintty"])
+def test_terminal_classes(name):
+    from parzprint.translate.grab import is_terminal_class
+
+    assert is_terminal_class(name)
+
+
+@pytest.mark.parametrize("name", ["", "Notepad", "Chrome_WidgetWin_1", "consolewindowclassx"])
+def test_other_classes_are_not_terminals(name):
+    from parzprint.translate.grab import is_terminal_class
+
+    assert not is_terminal_class(name)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="só Windows")
+def test_no_ctrl_c_in_terminal():
+    """Num terminal o Ctrl+C sem seleção mata o processo: não aperta nada e cai no texto copiado."""
+    backend = WinBackend()
+    fake = backend._user32 = _FakeUser32(set())
+    backend.foreground_class = lambda: "CASCADIA_HOSTING_WINDOW_CLASS"
+    with pytest.raises(OSError):
+        backend.send_copy()
+    assert fake.sent == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="só Windows")
+def test_ctrl_c_outside_terminal():
+    backend = WinBackend()
+    fake = backend._user32 = _FakeUser32(set())
+    backend.foreground_class = lambda: "Notepad"
+    backend.send_copy()
+    assert [vk for vk, _ in fake.sent] == [0x11, 0x11, 0x43, 0x43, 0x11]
+

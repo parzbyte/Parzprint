@@ -80,6 +80,12 @@ _INPUT_KEYBOARD, _KEYEVENTF_KEYUP = 1, 0x2
 _VK_CONTROL, _VK_SHIFT, _VK_MENU, _VK_LWIN, _VK_RWIN, _VK_C = 0x11, 0x10, 0x12, 0x5B, 0x5C, 0x43
 _VK_NONE = 0xFF  # tecla sem função
 _CF_UNICODETEXT = 13
+# Windows Terminal, conhost e mintty: lá o Ctrl+C sem seleção interrompe o processo
+_TERMINAL_CLASSES = frozenset({"ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS", "mintty"})
+
+
+def is_terminal_class(name: str) -> bool:
+    return name in _TERMINAL_CLASSES
 
 
 class WinBackend:
@@ -97,6 +103,9 @@ class WinBackend:
         u.SendInput.restype = wintypes.UINT
         u.GetAsyncKeyState.argtypes = [ctypes.c_int]
         u.GetAsyncKeyState.restype = ctypes.c_short
+        u.GetForegroundWindow.restype = wintypes.HWND
+        u.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        u.GetClassNameW.restype = ctypes.c_int
         u.OpenClipboard.argtypes = [wintypes.HWND]
         u.OpenClipboard.restype = wintypes.BOOL
         u.CloseClipboard.restype = wintypes.BOOL
@@ -123,7 +132,17 @@ class WinBackend:
         if sent != len(events):
             raise OSError(f"SendInput enviou {sent} de {len(events)} eventos")
 
+    def foreground_class(self) -> str:
+        hwnd = self._user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        buf = ctypes.create_unicode_buffer(256)
+        n = self._user32.GetClassNameW(hwnd, buf, len(buf))
+        return buf.value[:n] if n > 0 else ""
+
     def send_copy(self) -> None:
+        if is_terminal_class(self.foreground_class()):
+            raise OSError("terminal em foco: o Ctrl+C interromperia o processo")
         key = self._key
         events = [key(_VK_CONTROL, True), key(_VK_CONTROL, False), key(_VK_C, False),
                   key(_VK_C, True), key(_VK_CONTROL, True)]
