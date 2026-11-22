@@ -9,11 +9,16 @@ from pathlib import Path
 
 import platformdirs
 
+from parzprint.translate.languages import AUTO, LANGUAGES, MAX_RECENT
+
 MODIFIERS = ("Ctrl", "Shift", "Alt", "Win")
 IMAGE_FORMATS = ("PNG", "JPG")
 OCR_ENGINES = ("indra",)
 DEFAULT_HOTKEY = "Ctrl+Shift+S"
 DEFAULT_PTT_HOTKEY = "Ctrl+Alt+Space"
+DEFAULT_TRANSLATE_HOTKEY = "Ctrl+Alt+T" if sys.platform == "win32" else "Ctrl+Alt+Y"
+TRANSLATE_MIN_SIZE = (320, 160)
+_LANG_CODES = frozenset(code for code, _ in LANGUAGES)
 REC_RESOLUTIONS = ("original", "1080", "720", "480")
 REC_FPS = (30, 15)
 REC_QUALITIES = ("alta", "media", "leve")
@@ -52,6 +57,23 @@ class Settings:
     mic_device: str = ""
     mic_mode: str = "always"
     system_audio: bool = True
+    translate_hotkey: str = DEFAULT_TRANSLATE_HOTKEY
+    translate_grab_selection: bool = True
+    translate_source: str = AUTO
+    translate_target: str = "pt"
+    translate_recent: list[str] = field(default_factory=list)
+    translate_size: list[int] = field(default_factory=lambda: [640, 300])
+    translate_pinned: bool = False
+
+
+def hotkey_conflict(s: Settings) -> str | None:
+    """Mensagem se dois atalhos entre captura, falar e tradutor forem iguais."""
+    names = (("captura", s.hotkey), ("falar", s.ptt_hotkey), ("tradutor", s.translate_hotkey))
+    for i, (a_name, a) in enumerate(names):
+        for b_name, b in names[i + 1 :]:
+            if a == b:
+                return f"O atalho {a} está em uso por {a_name} e {b_name}."
+    return None
 
 
 def settings_path() -> Path:
@@ -98,6 +120,28 @@ def _valid(name: str, value: object) -> bool:
         return isinstance(value, str)
     if name == "mic_mode":
         return value in MIC_MODES
+    if name == "translate_hotkey":
+        return is_valid_hotkey(value)  # type: ignore[arg-type]
+    if name in ("translate_grab_selection", "translate_pinned"):
+        return isinstance(value, bool)
+    if name == "translate_source":
+        return value == AUTO or value in _LANG_CODES
+    if name == "translate_target":
+        return value in _LANG_CODES
+    if name == "translate_recent":
+        return (
+            isinstance(value, list)
+            and len(value) <= MAX_RECENT
+            and all(isinstance(c, str) and c in _LANG_CODES for c in value)
+        )
+    if name == "translate_size":
+        return (
+            isinstance(value, list)
+            and len(value) == 2
+            and all(isinstance(n, int) and not isinstance(n, bool) for n in value)
+            and value[0] >= TRANSLATE_MIN_SIZE[0]
+            and value[1] >= TRANSLATE_MIN_SIZE[1]
+        )
     return False
 
 

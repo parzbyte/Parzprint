@@ -1,6 +1,13 @@
 import json
+import sys
 
-from parzprint.settings import Settings, is_valid_hotkey, load_settings, save_settings
+from parzprint.settings import (
+    Settings,
+    hotkey_conflict,
+    is_valid_hotkey,
+    load_settings,
+    save_settings,
+)
 
 
 def test_defaults():
@@ -90,3 +97,43 @@ def test_fps_rejects_bool(tmp_path):
     p = tmp_path / "s.json"
     p.write_text(json.dumps({"rec_fps": True}), encoding="utf-8")
     assert load_settings(p).rec_fps == 30
+
+
+def test_translate_defaults():
+    from parzprint import settings as mod
+
+    assert mod.DEFAULT_TRANSLATE_HOTKEY == ("Ctrl+Alt+T" if sys.platform == "win32" else "Ctrl+Alt+Y")
+    s = Settings()
+    assert s.translate_source == "auto" and s.translate_target == "pt"
+    assert s.translate_grab_selection is True and s.translate_pinned is False
+    assert s.translate_recent == [] and s.translate_size == [640, 300]
+    s.translate_recent.append("en")
+    assert Settings().translate_recent == []
+
+
+def test_translate_invalid_values_fall_back(tmp_path):
+    p = tmp_path / "s.json"
+    for bad in ("auto", "xx"):
+        p.write_text(json.dumps({"translate_target": bad}), encoding="utf-8")
+        assert load_settings(p).translate_target == "pt"
+    p.write_text(json.dumps({"translate_size": [10, "a"], "translate_recent": "en"}), encoding="utf-8")
+    s = load_settings(p)
+    assert s.translate_size == [640, 300] and s.translate_recent == []
+    p.write_text(json.dumps({"translate_size": [300, 160]}), encoding="utf-8")
+    assert load_settings(p).translate_size == [640, 300]
+    p.write_text(json.dumps({"translate_size": [320, 160], "translate_recent": ["en", "xx"]}), encoding="utf-8")
+    s = load_settings(p)
+    assert s.translate_size == [320, 160] and s.translate_recent == []
+    p.write_text(json.dumps({"translate_recent": ["en", "ja"], "translate_source": "xx"}), encoding="utf-8")
+    s = load_settings(p)
+    assert s.translate_recent == ["en", "ja"] and s.translate_source == "auto"
+
+
+def test_hotkey_conflict():
+    s = Settings()
+    assert hotkey_conflict(s) is None
+    s.translate_hotkey = s.hotkey
+    assert hotkey_conflict(s)
+    s.translate_hotkey = "Ctrl+Alt+Q"
+    s.ptt_hotkey = s.hotkey
+    assert hotkey_conflict(s)
