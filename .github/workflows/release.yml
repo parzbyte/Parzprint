@@ -115,6 +115,8 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           path: pacotes
@@ -129,22 +131,38 @@ jobs:
         with:
           subject-path: pacotes/SHA256SUMS.txt
 
+      # O texto da versão sai do CHANGELOG.md (a seção da versão marcada) mais o jeito de instalar.
+      - name: Notas da versão
+        env:
+          VERSAO: ${{ github.ref_name }}
+        run: |
+          v="${VERSAO#v}"
+          awk -v v="$v" '
+            /^## / { dentro = (index($0, "## " v " ") == 1 || $0 == "## " v) ; if (dentro) { achou = 1; next } }
+            dentro { print }
+            END { if (!achou) exit 1 }
+          ' CHANGELOG.md > notas.md || { echo "Falta a seção $v no CHANGELOG.md"; exit 1; }
+          cat >> notas.md <<'FIM'
+
+          ## Como instalar
+
+          **Windows:** baixe o `Parzprint-windows.zip`, extraia e abra o `Parzprint.exe`.
+          **Linux:** baixe o `Parzprint-linux.tar.gz`, extraia e rode `./Parzprint/Parzprint`. A gravação de tela é só do Windows por enquanto.
+
+          Os arquivos foram gerados pelo GitHub a partir deste repositório, com a origem assinada. Para conferir:
+
+          ```
+          gh attestation verify Parzprint-windows.zip --repo parzbyte/Parzprint
+          ```
+
+          O SHA-256 de cada arquivo está em `SHA256SUMS.txt`. O histórico completo fica no [CHANGELOG.md](https://github.com/parzbyte/Parzprint/blob/main/CHANGELOG.md).
+          FIM
+          cat notas.md
+
       - uses: softprops/action-gh-release@v3
         with:
           name: Parzprint ${{ github.ref_name }}
-          body: |
-            Parzprint, por Parzbyte.
-
-            **Windows:** baixe o `Parzprint-windows.zip`, extraia e abra o `Parzprint.exe`.
-            **Linux:** baixe o `Parzprint-linux.tar.gz`, extraia e rode `./Parzprint/Parzprint`. A gravação de tela é só do Windows por enquanto.
-
-            Os arquivos foram gerados pelo GitHub a partir deste repositório, com a origem assinada. Para conferir:
-
-            ```
-            gh attestation verify Parzprint-windows.zip --repo parzbyte/Parzprint
-            ```
-
-            O SHA-256 de cada arquivo está em `SHA256SUMS.txt`.
+          body_path: notas.md
           files: |
             pacotes/Parzprint-windows.zip
             pacotes/Parzprint-linux.tar.gz

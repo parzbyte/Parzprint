@@ -288,6 +288,10 @@ build.py               gera o executável com PyInstaller
   texto só vai ao Google quando você pede a tradução, e sem internet o tradutor não funciona.
 - O Indra lê "Última" como "Ultima" em letras maiúsculas acentuadas, um limite do modelo.
 
+## O que mudou
+
+O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md).
+
 ## Licença e marca
 
 O código é livre, sob a [licença MIT](LICENSE): pode usar, modificar e distribuir. A marca
