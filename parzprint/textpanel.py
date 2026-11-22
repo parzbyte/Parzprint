@@ -145,6 +145,7 @@ QPushButton#primary:hover { background: #A3111F; border-color: #A3111F; }
 class TextPanel(QWidget):
     copy_all = Signal(str)
     copy_selection = Signal(str)
+    translate = Signal(str)
     closed = Signal()
     retry = Signal()
     selection_changed = Signal(int, int)  # o usuário selecionou no painel (posições no texto)
@@ -186,10 +187,13 @@ class TextPanel(QWidget):
         self.copy_all_button.clicked.connect(lambda: self.copy_all.emit(self.edit.toPlainText()))
         self.copy_sel_button = QPushButton("Copiar seleção", self)
         self.copy_sel_button.clicked.connect(lambda: self.copy_selection.emit(self.selected_text()))
+        self.translate_button = QPushButton("Traduzir", self)
+        self.translate_button.clicked.connect(self._on_translate)
         self.retry_button = QPushButton("Tentar de novo", self)
         self.retry_button.clicked.connect(self.retry)
         row.addWidget(self.copy_all_button)
         row.addWidget(self.copy_sel_button)
+        row.addWidget(self.translate_button)
         row.addWidget(self.retry_button)
         row.addStretch(1)
         lay.addLayout(row)
@@ -203,6 +207,7 @@ class TextPanel(QWidget):
         self.edit.setEnabled(False)
         self.copy_all_button.setEnabled(False)
         self.copy_sel_button.setEnabled(False)
+        self.translate_button.setEnabled(False)
         self.retry_button.hide()
 
     def show_text(self, text: str) -> None:
@@ -215,6 +220,7 @@ class TextPanel(QWidget):
         self.status.show()
         self.copy_all_button.setEnabled(bool(text))
         self.copy_sel_button.setEnabled(False)
+        self.translate_button.setEnabled(bool(text))
 
     def show_error(self, message: str) -> None:
         self.status.setText(f"Não foi possível ler o texto: {message}")
@@ -223,6 +229,7 @@ class TextPanel(QWidget):
         self.edit.setEnabled(False)
         self.copy_all_button.setEnabled(False)
         self.copy_sel_button.setEnabled(False)
+        self.translate_button.setEnabled(False)
         self.retry_button.show()
 
     # ---------- seleção sincronizada ----------
@@ -243,6 +250,11 @@ class TextPanel(QWidget):
 
     def selected_text(self) -> str:
         return self.edit.textCursor().selectedText().replace(" ", "\n")
+
+    def _on_translate(self) -> None:
+        """Traduz o trecho selecionado ou, sem seleção, o texto todo."""
+        text = self.selected_text() if self.edit.textCursor().hasSelection() else self.edit.toPlainText()
+        self.translate.emit(text)
 
     def _on_edit_selection(self) -> None:
         cursor = self.edit.textCursor()

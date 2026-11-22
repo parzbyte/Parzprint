@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from enum import Enum
 
-from PySide6.QtCore import QByteArray, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QByteArray, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
@@ -50,6 +50,7 @@ _SVG = {
     "copy": '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
     "print": '<path d="M7 9V3h10v6"/><path d="M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/>',
     "ocr": '<path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7.5 8.5h9"/><path d="M12 8.5v7"/>',
+    "translate": '<path d="M3 5h9"/><path d="M7.5 3v2"/><path d="M5 5c.5 3 2.5 5.5 5.5 7"/><path d="M11 5c-.5 3-3 6-7 8"/><path d="m13 21 4-9 4 9"/><path d="M14.5 18h5"/>',
     "close": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     "clear": '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5"/><path d="M14 11v5"/>',
     "record": '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>',
@@ -196,6 +197,7 @@ class BottomToolbar(_Bar):
     copy_requested = Signal()
     print_requested = Signal()
     text_requested = Signal()
+    translate_requested = Signal()
     close_requested = Signal()
     record_requested = Signal()
 
@@ -212,6 +214,7 @@ class BottomToolbar(_Bar):
             ("copy", "Copiar imagem (Ctrl+C)", self.copy_requested),
             ("print", "Imprimir", self.print_requested),
             ("ocr", "Ler o texto da imagem", self.text_requested),
+            ("translate", "Traduzir a imagem", self.translate_requested),
             ("record", "Gravar a tela", self.record_requested),
             ("close", "Fechar (Esc)", self.close_requested),
         ]
@@ -224,10 +227,27 @@ class BottomToolbar(_Bar):
             lay.addWidget(b)
             self.buttons[icon] = b
         self.text_button = self.buttons["ocr"]
+        self.translate_button = self.buttons["translate"]
+        self._flash_timer = QTimer(self)
+        self._flash_timer.setSingleShot(True)
+        self._flash_timer.timeout.connect(self._end_flash)
         self.adjustSize()
 
     def set_busy(self, busy: bool, label: str = "") -> None:
+        self._flash_timer.stop()
         self.text_button.setEnabled(not busy)
+        self.translate_button.setEnabled(not busy)
         self.busy_label.setText(label)
         self.busy_label.setVisible(busy and bool(label))
+        self.adjustSize()
+
+    def flash(self, message: str, ms: int = 3000) -> None:
+        """Mostra um aviso curto no lugar do rótulo de ocupado."""
+        self.busy_label.setText(message)
+        self.busy_label.show()
+        self.adjustSize()
+        self._flash_timer.start(ms)
+
+    def _end_flash(self) -> None:
+        self.busy_label.hide()
         self.adjustSize()

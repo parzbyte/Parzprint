@@ -309,3 +309,97 @@ def test_record_button_hidden_off_windows(qapp, monkeypatch):
     monkeypatch.setattr(sys, "platform", "linux")
     bar = BottomToolbar(None)
     assert "record" not in bar.buttons
+
+
+class _CountingEngine:
+    name = "fake"
+
+    def __init__(self, blocks):
+        self.blocks = blocks
+        self.calls = 0
+
+    def recognize(self, image):
+        self.calls += 1
+        return list(self.blocks)
+
+
+def _editor_with_engine(qapp, blocks):
+    ov, ed, cancelled = make_editor(qapp)
+    engine = _CountingEngine(blocks)
+    ed._engine_provider = lambda: engine
+    return ov, ed, cancelled, engine
+
+
+def test_translate_button_runs_ocr_and_emits(qapp):
+    from tests.conftest import wait_until
+
+    ov, ed, cancelled, engine = _editor_with_engine(qapp, LENS_BLOCKS)
+    got = []
+    ed.translate_requested.connect(lambda text, area: got.append((text, area)))
+    ed.bottom.buttons["translate"].click()
+    wait_until(lambda: bool(got))
+    assert got == [("olá mundo\nsegunda", QRect(50, 50, 200, 150))]
+    assert cancelled == [True]
+    assert ed.panel is None or not ed.panel.isVisible()
+
+
+def test_translate_reuses_ocr_blocks(qapp):
+    from tests.conftest import wait_until
+
+    ov, ed, cancelled, engine = _editor_with_engine(qapp, LENS_BLOCKS)
+    ed.request_text()
+    wait_until(lambda: ed.layout is not None)
+    got = []
+    ed.translate_requested.connect(lambda text, area: got.append(text))
+    ed.bottom.buttons["translate"].click()
+    assert got == ["olá mundo\nsegunda"]
+    assert engine.calls == 1
+
+
+def test_translate_no_text_flashes_and_stays_open(qapp):
+    from tests.conftest import wait_until
+
+    ov, ed, cancelled, engine = _editor_with_engine(qapp, [])
+    got = []
+    ed.translate_requested.connect(lambda text, area: got.append(text))
+    ed.bottom.buttons["translate"].click()
+    wait_until(lambda: ed.bottom.busy_label.text() == "Não achei texto nessa área.")
+    assert got == [] and cancelled == []
+    assert not ed.bottom.busy_label.isHidden()
+
+
+def test_translate_ocr_failure_opens_panel_with_error(qapp):
+    from tests.conftest import wait_until
+
+    ov, ed, cancelled = make_editor(qapp)
+
+    class Boom:
+        name = "fake"
+
+        def recognize(self, image):
+            raise RuntimeError("quebrou")
+
+    ed._engine_provider = lambda: Boom()
+    ed.translate_requested.connect(lambda *a: cancelled.append("emitted"))
+    ed.request_translate()
+    wait_until(lambda: ed.panel is not None and ed.panel.retry_button.isVisible())
+    assert "quebrou" in ed.panel.status.text()
+    assert cancelled == []
+
+
+def test_panel_translate_uses_selection_or_all(qapp):
+    ov, ed, cancelled = open_text_mode(qapp)
+    got = []
+    ed.translate_requested.connect(lambda text, area: got.append((text, area)))
+    ed.panel.translate_button.click()
+    assert got == [("olá mundo\nsegunda", QRect(50, 50, 200, 150))]
+    assert cancelled == [True]
+
+    ov, ed, cancelled = open_text_mode(qapp)
+    got = []
+    ed.translate_requested.connect(lambda text, area: got.append(text))
+    ed.layout.select(4, 9)
+    ed._after_selection()
+    ed.panel.translate_button.click()
+    assert got == ["mundo"]
+    assert cancelled == [True]

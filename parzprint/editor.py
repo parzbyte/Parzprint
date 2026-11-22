@@ -42,6 +42,7 @@ QPushButton:hover { background: #A3111F; }
 class Editor(QObject):
     closed = Signal()
     record_requested = Signal(object, QRect, list)  # Monitor, área global, desenhos
+    translate_requested = Signal(str, QRect)  # texto, área global
 
     def __init__(self, overlay, settings: Settings | None = None, engine_provider=None):
         super().__init__(overlay)
@@ -53,6 +54,7 @@ class Editor(QObject):
         self._anchor: int | None = None
         self.panel: TextPanel | None = None
         self._ocr_running = False
+        self._after_ocr = "panel"  # o que fazer quando o OCR terminar: "panel" ou "translate"
         self.stack = AnnotationStack()
         self.tool: Tool | None = None
         self.color = DEFAULT_COLOR
@@ -79,6 +81,7 @@ class Editor(QObject):
         self.bottom.copy_requested.connect(self.copy)
         self.bottom.print_requested.connect(self.print_)
         self.bottom.text_requested.connect(self.request_text)
+        self.bottom.translate_requested.connect(self.request_translate)
         self.bottom.record_requested.connect(self.record)
         self._last_sel = QRect(overlay.sel)
         overlay.selection_changed.connect(self._on_selection_changed)
@@ -397,12 +400,27 @@ class Editor(QObject):
         if self._ocr_blocks is not None:
             self._open_panel()
             return
+        self._start_ocr("panel")
+
+    def request_translate(self) -> None:
+        """Traduz a área: lê o texto (sem abrir o painel) e entrega a quem traduz."""
+        self._finish_text()
+        if self._ocr_running:
+            return
+        if self._ocr_blocks is not None:
+            self._translate_blocks()
+            return
+        self._start_ocr("translate")
+
+    def _start_ocr(self, after: str) -> None:
         try:
             engine: OcrEngine = self._engine_provider()
         except Exception as e:  # noqa: BLE001
+            self._ensure_panel()
             self._open_panel()
             self.panel.show_error(str(e))
             return
+        self._after_ocr = after
         label = progress_label(engine)
         self._ocr_running = True
         self.bottom.set_busy(True, label)
@@ -412,6 +430,19 @@ class Editor(QObject):
         worker.failed.connect(self._on_ocr_failed)
         worker.start()
 
+    def _translate_blocks(self) -> None:
+        text = TextLayout(self._ocr_blocks or [], measure=self._measure()).text
+        if not text.strip():
+            self.bottom.flash("Não achei texto nessa área.")
+            return
+        self._emit_translate(text)
+
+    def _emit_translate(self, text: str) -> None:
+        if not text.strip():
+            return
+        self.translate_requested.emit(text, self.ov.selection_global())
+        self.close()
+
     def _ensure_panel(self) -> None:
         if self.panel is not None:
             return
@@ -419,6 +450,7 @@ class Editor(QObject):
         self.panel.hide()
         self.panel.copy_all.connect(self._copy_text_and_close)
         self.panel.copy_selection.connect(self._copy_text_and_close)
+        self.panel.translate.connect(self._emit_translate)
         self.panel.closed.connect(self.close_panel)
         self.panel.retry.connect(self._retry)
         self.panel.selection_changed.connect(self._on_panel_selection)
@@ -452,12 +484,17 @@ class Editor(QObject):
         self._ocr_running = False
         self.bottom.set_busy(False)
         self._ocr_blocks = blocks
+        if self._after_ocr == "translate":
+            self._translate_blocks()
+            return
+        self._ensure_panel()
         self._open_panel()
 
     def _on_ocr_failed(self, message: str) -> None:
         self._ocr_running = False
         self.bottom.set_busy(False)
         self._ocr_blocks = None
+        self._ensure_panel()
         self._open_panel()
         self.panel.show_error(message)
 
