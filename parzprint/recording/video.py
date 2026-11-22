@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 
 from PySide6.QtCore import QObject, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QCursor, QImage, QPainter
@@ -135,8 +136,55 @@ def _cursor_image() -> tuple[QImage, int, int] | None:
 
 
 # ---------------------------------------------------------------- bomba de quadros
+class _FrameThread:
+    """Uma linha de execução só para preparar quadros, criada uma vez e nunca encerrada.
+
+    No Windows, quando uma linha que mexeu em quadros de vídeo termina, o sistema descarrega
+    as bibliotecas gráficas dela e, enquanto isso, nenhuma outra linha nova consegue começar:
+    a gravação travava ao salvar. Mantendo esta viva, isso não acontece.
+    """
+
+    def __init__(self):
+        self.cond = threading.Condition()
+        self.job = None  # (pump, frame, instante, ponteiro)
+        self.thread = threading.Thread(target=self._run, name="parzprint-quadros", daemon=True)
+        self.thread.start()
+
+    def _run(self) -> None:
+        while True:
+            with self.cond:
+                while self.job is None:
+                    self.cond.wait()
+                pump, frame, now, cursor = self.job
+                self.job = None
+            try:
+                if pump._running:
+                    pump._emit(frame.toImage(), now, cursor)
+            except Exception:  # noqa: BLE001  (um quadro ruim não pode parar a gravação)
+                pass
+            finally:
+                pump._busy = False
+
+
+_frame_thread: _FrameThread | None = None
+_frame_thread_lock = threading.Lock()
+
+
+def _shared_frame_thread() -> _FrameThread:
+    global _frame_thread
+    with _frame_thread_lock:
+        if _frame_thread is None:
+            _frame_thread = _FrameThread()
+        return _frame_thread
+
+
 class FramePump(QObject):
-    """Recebe quadros do monitor, entrega no máximo ``fps`` por segundo, já recortados."""
+    """Recebe quadros do monitor e entrega no máximo ``fps`` por segundo, já recortados.
+
+    O preparo de cada quadro (virar imagem, recortar, desenhar o ponteiro) roda numa linha
+    de execução própria. Se o PC não der conta, os quadros que chegam enquanto ela está
+    ocupada são pulados: a gravação repete o último quadro e a interface nunca trava.
+    """
 
     frame_ready = Signal(QVideoFrame)
     warning = Signal(str)
@@ -150,12 +198,19 @@ class FramePump(QObject):
         self.fps = fps
         self.draw_cursor = draw_cursor
         self._interval = 1_000_000 // fps
-        self._last: int | None = None
+        self._next: int | None = None  # próximo instante em que um quadro deve sair
         self.clock = None
         self._capture = self._session = self._sink = None
+        self._busy = False
+        self._running = False
+        self._shared: _FrameThread | None = None
+        self._worker: threading.Thread | None = None
 
     def start(self, clock, capture: bool = True) -> None:
         self.clock = clock
+        self._running = True
+        self._shared = _shared_frame_thread()
+        self._worker = self._shared.thread
         if not capture:
             return
         from PySide6.QtMultimedia import QMediaCaptureSession, QScreenCapture, QVideoSink
@@ -175,22 +230,46 @@ class FramePump(QObject):
             self._capture.setActive(False)
             self._sink.videoFrameChanged.disconnect(self._on_frame)
         self._capture = self._session = self._sink = None
+        self._running = False
+        if self._shared is not None:
+            with self._shared.cond:
+                if self._shared.job is not None and self._shared.job[0] is self:
+                    self._shared.job = None
+                    self._busy = False
 
     def _on_capture_error(self, _error=None, message: str = "") -> None:
         self.warning.emit(f"A captura da tela falhou: {message or 'erro desconhecido'}")
 
     def _due(self) -> int | None:
+        """Instante do quadro, se for hora de um sair; None para pular este.
+
+        Segue uma grade de 1/fps com meia folga, para quadros que chegam um pouco antes do
+        tempo não serem descartados (com folga fixa, um vídeo de 30 saía com uns 11).
+        """
         if self.clock is None or self.clock.paused:
             return None
         now = self.clock.now_us()
-        if self._last is not None and now - self._last < self._interval - 2000:
+        if self._next is None or now > self._next + self._interval:
+            self._next = now  # começo, ou o relógio pulou (pausa, PC travado): realinha
+        if now < self._next - self._interval // 2:
             return None
+        self._next += self._interval
         return now
 
     def _on_frame(self, frame) -> None:
-        if self._due() is None or not frame.isValid():
+        """Roda na interface: só decide se o quadro vai e entrega para a outra linha."""
+        if not frame.isValid() or self._busy:
             return
-        self.handle_image(frame.toImage())
+        now = self._due()
+        if now is None:
+            return
+        cursor = self._cursor()
+        if not self._running or self._shared is None:
+            return
+        with self._shared.cond:
+            self._shared.job = (self, frame, now, cursor)
+            self._busy = True
+            self._shared.cond.notify()
 
     def _cursor(self):
         if not self.draw_cursor or self.screen is None:
@@ -211,13 +290,16 @@ class FramePump(QObject):
             return None
         return pic, x, y
 
-    def handle_image(self, image: QImage) -> None:
-        now = self._due()
-        if now is None:
-            return
-        img = prepare_frame(image, self.crop, self.out_size, self._cursor())
+    def _emit(self, image: QImage, now: int, cursor) -> None:
+        img = prepare_frame(image, self.crop, self.out_size, cursor)
         frame = QVideoFrame(img)
         frame.setStartTime(now)
         frame.setEndTime(now + self._interval)
-        self._last = now
         self.frame_ready.emit(frame)
+
+    def handle_image(self, image: QImage) -> None:
+        """Mesmo caminho de um quadro, mas preparado na hora (usado pelos testes)."""
+        now = self._due()
+        if now is None:
+            return
+        self._emit(image, now, self._cursor())
