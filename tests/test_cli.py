@@ -10,6 +10,7 @@ from parzprint.single_instance import SingleInstance, parse_args
 def test_parse_args():
     assert parse_args(["--capture"]) == "capture"
     assert parse_args(["--settings"]) == "settings"
+    assert parse_args(["--translate"]) == "translate"
     assert parse_args([]) == "none"
     assert parse_args(["--algo-desconhecido"]) == "none"
 

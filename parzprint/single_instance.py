@@ -12,11 +12,12 @@ TIMEOUT_MS = 500
 
 
 def parse_args(argv: list[str]) -> str:
-    """"capture", "settings" ou "none"."""
+    """"capture", "settings", "translate" ou "none"."""
     parser = argparse.ArgumentParser(prog="parzprint", add_help=False)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--capture", action="store_true")
     group.add_argument("--settings", action="store_true")
+    group.add_argument("--translate", action="store_true")
     try:
         args, _ = parser.parse_known_args(argv)
     except SystemExit:
@@ -25,6 +26,8 @@ def parse_args(argv: list[str]) -> str:
         return "capture"
     if args.settings:
         return "settings"
+    if args.translate:
+        return "translate"
     return "none"
 
 

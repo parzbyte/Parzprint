@@ -38,3 +38,32 @@ def test_settings_window_hides_recording_off_windows(qapp, monkeypatch):
     assert win.recording_box is None
     assert win.current().rec_quality == "media"
     win.close()
+
+
+def test_settings_window_translator_fields(qapp):
+    win = SettingsWindow(Settings())
+    assert win.translate_hotkey.value == Settings().translate_hotkey
+    assert win.translate_grab_selection.text() == "Pegar o texto selecionado"
+    assert win.translate_grab_selection.isChecked()
+    texts = [w.text() for w in win.findChildren(QLabel)]
+    assert "Para traduzir, o texto é enviado ao Google Tradutor. Nada sai do computador sem você pedir." in texts
+    win.translate_hotkey.value = "Ctrl+Alt+U"
+    win.translate_grab_selection.setChecked(False)
+    s = win.current()
+    assert s.translate_hotkey == "Ctrl+Alt+U" and s.translate_grab_selection is False
+    win.close()
+
+
+def test_settings_window_refuses_repeated_hotkey(qapp, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warned.append(a[2]))
+    win = SettingsWindow(Settings())
+    got = []
+    win.saved.connect(got.append)
+    win.translate_hotkey.value = win.hotkey.value
+    win._save()
+    assert got == [] and warned and "repetido" in warned[0]
+    assert win.isVisible() or win.result() == 0
+    win.close()

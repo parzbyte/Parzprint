@@ -19,6 +19,7 @@ def app_icon() -> QIcon:
 
 class Tray(QSystemTrayIcon):
     capture_requested = Signal()
+    translate_requested = Signal()
     settings_requested = Signal()
     quit_requested = Signal()
     stop_recording_requested = Signal()
@@ -30,6 +31,7 @@ class Tray(QSystemTrayIcon):
         self._stop_action = menu.addAction("Parar gravação", self.stop_recording_requested.emit)
         self._stop_action.setVisible(False)
         menu.addAction("Capturar", self.capture_requested.emit)
+        menu.addAction("Traduzir", self.translate_requested.emit)
         menu.addAction("Configurações", self.settings_requested.emit)
         menu.addSeparator()
         menu.addAction("Sair", self.quit_requested.emit)

@@ -8,18 +8,19 @@ from dataclasses import replace
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QVBoxLayout, QWidget,
+    QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
 from .brand import MUTED, SIGNATURE
 from .hotkey import HotkeyError, from_qt_key_event, is_wayland, to_pynput
-from .settings import IMAGE_FORMATS, Settings
+from .settings import IMAGE_FORMATS, Settings, hotkey_conflict
 from .tray import app_icon
 
 WAYLAND_HINT = (
     "Em Wayland o atalho global não é suportado. Cadastre nas configurações de teclado "
     "do sistema o comando: parzprint --capture"
 )
+TRANSLATE_PRIVACY = "Para traduzir, o texto é enviado ao Google Tradutor. Nada sai do computador sem você pedir."
 
 _QT_MODS = (
     (Qt.KeyboardModifier.ControlModifier, "Ctrl"),
@@ -100,6 +101,7 @@ class SettingsWindow(QDialog):
         form.addRow("Formato", self.image_format)
 
         self.recording_box = self._recording_section(settings) if sys.platform == "win32" else None
+        self.translate_box = self._translate_section(settings)
 
         buttons = QDialogButtonBox(self)
         buttons.addButton("Salvar", QDialogButtonBox.ButtonRole.AcceptRole)
@@ -115,6 +117,7 @@ class SettingsWindow(QDialog):
         lay.addLayout(form)
         if self.recording_box is not None:
             lay.addWidget(self.recording_box)
+        lay.addWidget(self.translate_box)
         lay.addWidget(buttons)
         lay.addWidget(signature)
 
@@ -159,6 +162,26 @@ class SettingsWindow(QDialog):
         form.addRow("", self.rec_countdown)
         return box
 
+    def _translate_section(self, settings: Settings) -> QGroupBox:
+        box = QGroupBox("Tradutor", self)
+        form = QFormLayout(box)
+        self.translate_hotkey = HotkeyEdit(settings.translate_hotkey, box)
+        form.addRow("Atalho do tradutor", self.translate_hotkey)
+        if is_wayland():
+            self.translate_hotkey.setEnabled(False)
+            hint = QLabel("Em Wayland, cadastre no sistema o comando: parzprint --translate", box)
+            hint.setWordWrap(True)
+            hint.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            form.addRow("", hint)
+        self.translate_grab_selection = QCheckBox("Pegar o texto selecionado", box)
+        self.translate_grab_selection.setChecked(settings.translate_grab_selection)
+        form.addRow("", self.translate_grab_selection)
+        privacy = QLabel(TRANSLATE_PRIVACY, box)
+        privacy.setWordWrap(True)
+        privacy.setStyleSheet(f"color: {MUTED};")
+        form.addRow(privacy)
+        return box
+
     def _browse_videos(self) -> None:
         d = QFileDialog.getExistingDirectory(self, "Pasta dos vídeos", self.video_dir.text())
         if d:
@@ -176,6 +199,8 @@ class SettingsWindow(QDialog):
             autostart=self.autostart.isChecked(),
             save_dir=self.save_dir.text().strip() or self._settings.save_dir,
             image_format=self.image_format.currentText(),
+            translate_hotkey=self.translate_hotkey.value,
+            translate_grab_selection=self.translate_grab_selection.isChecked(),
         )
         if self.recording_box is not None:
             s = replace(
@@ -191,5 +216,10 @@ class SettingsWindow(QDialog):
         return s
 
     def _save(self) -> None:
-        self.saved.emit(self.current())
+        s = self.current()
+        conflict = hotkey_conflict(s)
+        if conflict:
+            QMessageBox.warning(self, "Configurações do Parzprint", conflict)
+            return
+        self.saved.emit(s)
         self.accept()

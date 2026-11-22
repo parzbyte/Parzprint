@@ -1,4 +1,4 @@
-"""Ponto de entrada: ``parzprint`` / ``python -m parzprint`` [--capture | --settings]."""
+"""Ponto de entrada: ``parzprint`` / ``python -m parzprint`` [--capture | --settings | --translate]."""
 
 from __future__ import annotations
 
