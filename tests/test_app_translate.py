@@ -11,6 +11,9 @@ from parzprint.tray import Tray
 from tests.conftest import wait_until
 
 
+MASKS = []
+
+
 class FakeQApp:
     def __init__(self):
         self.quit_called = False
@@ -101,6 +104,8 @@ def env(qapp, monkeypatch):
     monkeypatch.setattr(app_mod, "Editor", FakeEditor)
     monkeypatch.setattr(app_mod, "WinBackend", lambda: "win")
     monkeypatch.setattr(app_mod, "QtBackend", lambda: "qt")
+    MASKS.clear()
+    monkeypatch.setattr(app_mod, "mask_alt_menu", lambda: MASKS.append(1))
     monkeypatch.setattr(Tray, "notify", lambda self, title, text: notes.append(text))
     result = {"grabbed": Grabbed("", "none")}
 
@@ -235,6 +240,7 @@ def test_translate_hotkey_press_reaches_gui(env):
     app = build()
     result["grabbed"] = Grabbed("oi", "selection")
     app.translate_hotkey.cb()
+    assert MASKS == [1]
     assert wait_until(lambda: FakeWindow.made and FakeWindow.made[0].opened)
 
 

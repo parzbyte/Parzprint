@@ -78,6 +78,7 @@ class _INPUT(ctypes.Structure):
 
 _INPUT_KEYBOARD, _KEYEVENTF_KEYUP = 1, 0x2
 _VK_CONTROL, _VK_SHIFT, _VK_MENU, _VK_LWIN, _VK_RWIN, _VK_C = 0x11, 0x10, 0x12, 0x5B, 0x5C, 0x43
+_VK_NONE = 0xFF  # tecla sem função
 _CF_UNICODETEXT = 13
 
 
@@ -109,27 +110,45 @@ class WinBackend:
     def sequence(self) -> int:
         return int(self._user32.GetClipboardSequenceNumber())
 
-    def send_copy(self) -> None:
-        def key(vk: int, up: bool) -> _INPUT:
-            i = _INPUT(type=_INPUT_KEYBOARD)
-            i.ki.wVk = vk
-            i.ki.dwFlags = _KEYEVENTF_KEYUP if up else 0
-            return i
+    @staticmethod
+    def _key(vk: int, up: bool) -> _INPUT:
+        i = _INPUT(type=_INPUT_KEYBOARD)
+        i.ki.wVk = vk
+        i.ki.dwFlags = _KEYEVENTF_KEYUP if up else 0
+        return i
 
-        events = [key(_VK_CONTROL, True), key(_VK_CONTROL, False), key(_VK_C, False),
-                  key(_VK_C, True), key(_VK_CONTROL, True)]
+    def _send(self, events: list[_INPUT]) -> None:
         arr = (_INPUT * len(events))(*events)
         sent = self._user32.SendInput(len(events), arr, ctypes.sizeof(_INPUT))
         if sent != len(events):
             raise OSError(f"SendInput enviou {sent} de {len(events)} eventos")
 
+    def send_copy(self) -> None:
+        key = self._key
+        events = [key(_VK_CONTROL, True), key(_VK_CONTROL, False), key(_VK_C, False),
+                  key(_VK_C, True), key(_VK_CONTROL, True)]
+        self._send(events)
+
+    def mask_alt(self) -> None:
+        """Com o Alt apertado, evita que soltá-lo abra o menu do programa (Bloco de Notas).
+
+        O atalho engole a letra, então o programa só vê Ctrl e Alt. Soltar o Ctrl antes da
+        tecla sem função é o que faz o Windows tratar aquilo como uma combinação.
+        """
+        if self._user32.GetAsyncKeyState(_VK_MENU) & 0x8000:
+            self._send([self._key(_VK_CONTROL, True), self._key(_VK_NONE, False), self._key(_VK_NONE, True)])
+
     def wait_modifiers_released(self, timeout_s: float) -> None:
         keys = (_VK_CONTROL, _VK_MENU, _VK_SHIFT, _VK_LWIN, _VK_RWIN)
+        held = False
         deadline = time.monotonic() + timeout_s
         while any(self._user32.GetAsyncKeyState(vk) & 0x8000 for vk in keys):
+            held = True
             if time.monotonic() >= deadline:
                 return
             time.sleep(0.01)
+        if held:
+            time.sleep(0.08)  # o Ctrl de verdade ainda pode estar subindo e atrapalharia o Ctrl+C
 
     def read_text(self) -> str:
         u, k = self._user32, self._kernel32
@@ -181,6 +200,16 @@ class QtBackend:
         if not self._cb.supportsSelection():
             return None
         return self._cb.text(self._mode.Selection)
+
+
+def mask_alt_menu() -> None:
+    """Chamar na hora em que o atalho dispara, com o Alt ainda apertado."""
+    if sys.platform != "win32":
+        return
+    try:
+        WinBackend().mask_alt()
+    except OSError:
+        pass
 
 
 def default_backend() -> Backend:

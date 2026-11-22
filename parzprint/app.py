@@ -20,7 +20,7 @@ from .settings import Settings, load_settings, save_settings
 from .settings_window import SettingsWindow, owned_fields
 from .single_instance import SingleInstance
 from .translate.google import GoogleTranslator
-from .translate.grab import QtBackend, WinBackend, grab
+from .translate.grab import QtBackend, WinBackend, grab, mask_alt_menu
 from .translate.window import TranslatorWindow
 from .tray import Tray, app_icon
 
@@ -95,12 +95,17 @@ class App(QObject):
             self.hotkey = None
             self.tray.notify("Parzprint", f"Atalho indisponível: {e}")
 
+    def _on_translate_hotkey(self) -> None:
+        # na thread do atalho: o Alt tem que ser mascarado antes de a pessoa soltar
+        mask_alt_menu()
+        self._translate_pressed.emit()
+
     def _start_translate_hotkey(self) -> None:
         if is_wayland():
             return
         try:
             if self.translate_hotkey is None:
-                self.translate_hotkey = GlobalHotkey(self.settings.translate_hotkey, self._translate_pressed.emit)
+                self.translate_hotkey = GlobalHotkey(self.settings.translate_hotkey, self._on_translate_hotkey)
                 self.translate_hotkey.start()
             else:
                 self.translate_hotkey.rebind(self.settings.translate_hotkey)

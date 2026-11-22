@@ -99,3 +99,30 @@ def test_win_backend_struct_and_sequence():
 
     assert ctypes.sizeof(g._INPUT) == (40 if ctypes.sizeof(ctypes.c_void_p) == 8 else 28)
     assert isinstance(WinBackend().sequence(), int)
+
+
+class _FakeUser32:
+    def __init__(self, held):
+        self.held = set(held)
+        self.sent = []
+
+    def GetAsyncKeyState(self, vk):
+        return 0x8000 if vk in self.held else 0
+
+    def SendInput(self, count, arr, size):
+        self.sent += [(arr[i].ki.wVk, arr[i].ki.dwFlags) for i in range(count)]
+        return count
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="só Windows")
+def test_alt_solto_sozinho_nao_abre_o_menu_do_programa():
+    """Com o Alt apertado, soltar o Ctrl e apertar uma tecla sem função evita que ele abra a barra de menus ao soltar."""
+    backend = WinBackend()
+    fake = backend._user32 = _FakeUser32(set())
+    backend.mask_alt()
+    assert fake.sent == []
+
+    fake.held.update({0x11, 0x12})
+    backend.mask_alt()
+    assert [vk for vk, _ in fake.sent] == [0x11, 0xFF, 0xFF]
+    assert [flags for _, flags in fake.sent] == [0x2, 0, 0x2]
