@@ -340,3 +340,17 @@ def test_translator_save_keeps_recording_mic(env):
     tw.on_settings_changed(replace(stale, translate_target="en"))
     assert (saved[-1].mic_device, saved[-1].translate_target) == ("X", "en")
     assert app.settings == saved[-1] and app.recorder.settings == saved[-1] and tw.settings == saved[-1]
+
+
+def test_mask_failure_still_opens_and_logs(env, monkeypatch, caplog):
+    build, result, *_ = env
+    app = build()
+
+    def boom():
+        raise RuntimeError("máscara falhou")
+
+    monkeypatch.setattr(app_mod, "mask_alt_menu", boom)
+    result["grabbed"] = Grabbed("oi", "selection")
+    app.translate_hotkey.cb()
+    assert wait_until(lambda: FakeWindow.made and FakeWindow.made[0].opened)
+    assert any("máscara falhou" in (r.exc_text or str(r.exc_info)) for r in caplog.records)

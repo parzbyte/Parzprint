@@ -161,3 +161,15 @@ def test_ctrl_c_outside_terminal():
     backend.send_copy()
     assert [vk for vk, _ in fake.sent] == [0x11, 0x11, 0x43, 0x43, 0x11]
 
+
+
+def test_mask_alt_menu_swallows_any_error(monkeypatch):
+    from parzprint.translate import grab as g
+
+    class Broken:
+        def mask_alt(self):
+            raise RuntimeError("quebrou")
+
+    monkeypatch.setattr(g.sys, "platform", "win32")
+    monkeypatch.setattr(g, "WinBackend", Broken)
+    g.mask_alt_menu()

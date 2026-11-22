@@ -138,3 +138,19 @@ def test_listener_that_never_gets_ready_does_not_hang():
             return True
 
     assert _wait_ready(Ready(), 0.3) is True
+
+
+def test_windows_hotkey_callback_error_is_logged_and_loop_survives(caplog):
+    from parzprint.hotkey import _WindowsHotkey
+
+    calls = []
+
+    def boom():
+        calls.append(1)
+        raise RuntimeError("callback quebrou")
+
+    hk = _WindowsHotkey("Ctrl+Alt+S", boom)
+    hk._fire()
+    hk._fire()
+    assert calls == [1, 1]
+    assert any("callback quebrou" in (r.exc_text or str(r.exc_info)) for r in caplog.records)

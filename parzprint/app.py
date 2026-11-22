@@ -97,8 +97,12 @@ class App(QObject):
 
     def _on_translate_hotkey(self) -> None:
         # na thread do atalho: o Alt tem que ser mascarado antes de a pessoa soltar
-        mask_alt_menu()
-        self._translate_pressed.emit()
+        try:
+            mask_alt_menu()
+        except Exception:  # noqa: BLE001
+            log.exception("Falha ao mascarar o Alt do atalho do tradutor")
+        finally:
+            self._translate_pressed.emit()
 
     def _start_translate_hotkey(self) -> None:
         if is_wayland():

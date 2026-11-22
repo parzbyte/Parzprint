@@ -7,12 +7,15 @@ pynput, que só escuta. Em Wayland não há atalho global para apps comuns.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import threading
 from collections.abc import Callable, Mapping
 
 from .settings import MODIFIERS, is_valid_hotkey
+
+log = logging.getLogger(__name__)
 
 _MOD_TO_PYNPUT = {"Ctrl": "<ctrl>", "Shift": "<shift>", "Alt": "<alt>", "Win": "<cmd>"}
 _SPECIAL = {
@@ -142,9 +145,16 @@ class _WindowsHotkey(threading.Thread):
         try:
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
                 if msg.message == self.WM_HOTKEY:
-                    self._callback()
+                    self._fire()
         finally:
             user32.UnregisterHotKey(None, 1)
+
+    def _fire(self) -> None:
+        # uma falha no callback não pode encerrar o laço e desligar o atalho
+        try:
+            self._callback()
+        except Exception:  # noqa: BLE001
+            log.exception("Falha no atalho %s", self._hotkey)
 
     def start_and_wait(self) -> None:
         self.start()

@@ -227,7 +227,7 @@ def mask_alt_menu() -> None:
         return
     try:
         WinBackend().mask_alt()
-    except OSError:
+    except Exception:  # noqa: BLE001
         pass
 
 
