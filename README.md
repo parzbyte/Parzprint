@@ -59,6 +59,25 @@ copiar, a captura fecha sozinha, porque o trabalho já terminou.
 O modelo do Indra (cerca de 73 MB) vai dentro do executável, então isso funciona offline
 desde o primeiro uso.
 
+### Traduzir
+
+Selecione um texto em qualquer programa e aperte `Ctrl+Alt+T` (no Linux o padrão é
+`Ctrl+Alt+Y`; troque em Configurações). Uma janela abre junto do ponteiro do mouse com o
+texto e a tradução lado a lado, como no Google Tradutor. O idioma de origem é detectado e o
+de destino começa em português. Os dois podem ser trocados nas listas, e o botão ⇄ inverte os
+idiomas. Os últimos que você usou ficam no topo das listas.
+
+Se não houver nada selecionado, a janela mostra o que estava copiado e espera você apertar
+Enter. Nesse caso nada é enviado antes disso. Para digitar ou colar um texto, abra a janela
+pelo item "Traduzir" da bandeja. Na captura, o botão "Traduzir a imagem" lê o texto da área
+com o Indra e abre a tradução embaixo dela.
+
+Na janela, `Enter` traduz, `Shift+Enter` quebra a linha, `Ctrl+Enter` copia a tradução e
+fecha, e `Esc` fecha. A janela também fecha sozinha quando você clica fora dela, a menos que
+o alfinete esteja marcado. Ela não aparece nas gravações de tela. O limite é de 5.000
+caracteres por vez. Sem atalho global (Wayland), ligue o comando `parzprint --translate` a um
+atalho do sistema.
+
 ### Gravar a tela
 
 Depois de escolher a área, clique em Gravar. Uma contagem de 3 segundos aparece e a gravação
@@ -167,6 +186,16 @@ outra, o Parzprint estima onde cada letra fica dentro da linha pela largura rela
 letras na fonte da tela. O OCR roda numa thread separada para a tela não travar, e sem o
 modelo de orientação do Indra, porque um print de tela está sempre de pé.
 
+### Tradutor
+
+O texto selecionado vem de um `Ctrl+C` que o próprio app manda para o programa em foco, e só
+vale se a área de transferência mudou. Como o atalho engole a letra, o programa só enxerga
+`Ctrl` e `Alt`, e soltar o `Alt` sozinho abre o menu do Bloco de Notas. Por isso o app solta
+o `Ctrl` e aperta uma tecla sem função antes do `Ctrl+C`. O pedido vai ao endereço que o
+Google usa nas próprias páginas (`translate.googleapis.com`), pela rede do Qt, sem travar a
+janela. O texto copiado fica na área de transferência, porque restaurar o conteúdo anterior
+(imagem, arquivos) é frágil.
+
 ### Gravação
 
 A gravação junta três fontes num único relógio:
@@ -241,6 +270,9 @@ build.py               gera o executável com PyInstaller
   Gravar não aparece.
 - Em Windows 10 de antes da versão 2004, o Windows não consegue esconder a barrinha do vídeo.
 - O ponteiro de texto (a barrinha "I") sai branco no vídeo e some sobre fundo branco.
+- O tradutor usa um endereço gratuito do Google que não é oficial. Ele pode limitar os pedidos ou
+  mudar sem aviso; quando falha, a janela avisa e oferece abrir o texto no Google Tradutor. O
+  texto só vai ao Google quando você pede a tradução, e sem internet o tradutor não funciona.
 - O Indra lê "Última" como "Ultima" em letras maiúsculas acentuadas, um limite do modelo.
 
 ## Licença e marca
