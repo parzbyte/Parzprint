@@ -23,7 +23,9 @@ atalho você escolhe uma área da tela e, a partir dela, pode:
 - copiar o texto que aparece na imagem, lido no próprio computador pelo
   [Indra OCR](https://github.com/datalab-to/indra), sem conta, sem internet e sem API;
 - gravar a área (ou a tela inteira) em vídeo, com o som do microfone e o som do computador,
-  desenhando por cima enquanto grava.
+  desenhando por cima enquanto grava;
+- traduzir o texto selecionado em qualquer programa, ou o texto da imagem, pelo Google
+  Tradutor.
 
 O app fica na bandeja do sistema e abre junto com o Windows.
 
@@ -68,7 +70,12 @@ de destino começa em português. Os dois podem ser trocados nas listas, e o bot
 idiomas. Os últimos que você usou ficam no topo das listas.
 
 Se não houver nada selecionado, a janela mostra o que estava copiado e espera você apertar
-Enter. Nesse caso nada é enviado antes disso. Para digitar ou colar um texto, abra a janela
+Enter. Nesse caso nada é enviado antes disso. Alguns editores, como o VS Code e o Excel,
+copiam a linha inteira quando nada está selecionado, e aí essa linha é traduzida direto.
+Para pegar o texto selecionado, o app aperta `Ctrl+C` por você; se não quiser isso, desmarque
+"Pegar o texto selecionado" em Configurações e a janela passa a usar só o que você copiou.
+Num terminal o app nunca aperta `Ctrl+C`, porque lá ele interromperia o programa em execução.
+Para digitar ou colar um texto, abra a janela
 pelo item "Traduzir" da bandeja. Na captura, o botão "Traduzir a imagem" lê o texto da área
 com o Indra e abre a tradução embaixo dela.
 
@@ -233,7 +240,7 @@ A sincronia anda em passos de 43 ms porque esse é o tamanho de um bloco de áud
 
 ### Testes
 
-São 210 testes automáticos com pytest. A lógica sem tela (geometria, mistura de áudio,
+São 335 testes automáticos com pytest. A lógica sem tela (geometria, mistura de áudio,
 relógio com pausa, compressão, configurações) é testada direto, e a interface é testada numa
 janela do Qt sem tela. Os comportamentos que dependem do Windows de verdade (captura,
 exclusão da captura, atalho global, som do computador) foram conferidos com gravações reais
@@ -246,7 +253,7 @@ Os documentos de design e os planos de implementação de cada etapa estão em
 
 ```
 parzprint/
-  app.py               liga bandeja, atalho, captura, editor e gravação
+  app.py               liga bandeja, atalhos, captura, editor, gravação e tradutor
   overlay.py           janela de seleção de área, uma por monitor
   editor.py            anotações, ações e modo de texto
   annotations.py       modelo das anotações e desenho
@@ -260,6 +267,12 @@ parzprint/
     drawlayer.py       camada de desenho durante a gravação
     recordbar.py       barrinha de gravação
     compress.py        recompressão com x264
+  translate/
+    google.py          pedido e resposta do Google Tradutor
+    grab.py            pega o texto selecionado ou o copiado
+    languages.py       lista de idiomas
+    style.py           folha de estilo da janela
+    window.py          janela do tradutor
 tests/                 testes automáticos
 build.py               gera o executável com PyInstaller
 ```
