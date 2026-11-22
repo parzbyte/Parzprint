@@ -137,3 +137,14 @@ def test_hotkey_conflict():
     s.translate_hotkey = "Ctrl+Alt+Q"
     s.ptt_hotkey = s.hotkey
     assert hotkey_conflict(s)
+
+
+def test_translate_unhashable_values_fall_back(tmp_path):
+    p = tmp_path / "s.json"
+    for key, default in (("translate_source", "auto"), ("translate_target", "pt")):
+        for bad in (["en"], {"a": 1}, 5, None):
+            p.write_text(json.dumps({key: bad}), encoding="utf-8")
+            assert getattr(load_settings(p), key) == default
+    for bad in ([["en"]], [{"a": 1}], [5], [None]):
+        p.write_text(json.dumps({"translate_recent": bad}), encoding="utf-8")
+        assert load_settings(p).translate_recent == []

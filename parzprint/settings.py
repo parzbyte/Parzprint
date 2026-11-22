@@ -68,11 +68,11 @@ class Settings:
 
 def hotkey_conflict(s: Settings) -> str | None:
     """Mensagem se dois atalhos entre captura, falar e tradutor forem iguais."""
-    names = (("captura", s.hotkey), ("falar", s.ptt_hotkey), ("tradutor", s.translate_hotkey))
+    names = (("captura", s.hotkey), ("aperte para falar", s.ptt_hotkey), ("tradutor", s.translate_hotkey))
     for i, (a_name, a) in enumerate(names):
         for b_name, b in names[i + 1 :]:
             if a == b:
-                return f"O atalho {a} está em uso por {a_name} e {b_name}."
+                return f"O atalho {a} está repetido em: {a_name} e {b_name}."
     return None
 
 
@@ -125,9 +125,9 @@ def _valid(name: str, value: object) -> bool:
     if name in ("translate_grab_selection", "translate_pinned"):
         return isinstance(value, bool)
     if name == "translate_source":
-        return value == AUTO or value in _LANG_CODES
+        return isinstance(value, str) and (value == AUTO or value in _LANG_CODES)
     if name == "translate_target":
-        return value in _LANG_CODES
+        return isinstance(value, str) and value in _LANG_CODES
     if name == "translate_recent":
         return (
             isinstance(value, list)
