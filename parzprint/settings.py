@@ -66,14 +66,23 @@ class Settings:
     translate_pinned: bool = False
 
 
+def _hotkey_names(s: Settings) -> tuple[tuple[str, str], ...]:
+    return (("captura", s.hotkey), ("aperte para falar", s.ptt_hotkey), ("tradutor", s.translate_hotkey))
+
+
 def hotkey_conflict(s: Settings) -> str | None:
     """Mensagem se dois atalhos entre captura, falar e tradutor forem iguais."""
-    names = (("captura", s.hotkey), ("aperte para falar", s.ptt_hotkey), ("tradutor", s.translate_hotkey))
+    names = _hotkey_names(s)
     for i, (a_name, a) in enumerate(names):
         for b_name, b in names[i + 1 :]:
             if a == b:
                 return f"O atalho {a} está repetido em: {a_name} e {b_name}."
     return None
+
+
+def translate_hotkey_conflicts(s: Settings) -> bool:
+    """True se o atalho do tradutor repete algum dos outros."""
+    return any(key == s.translate_hotkey for name, key in _hotkey_names(s) if name != "tradutor")
 
 
 def settings_path() -> Path:

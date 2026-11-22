@@ -354,3 +354,21 @@ def test_mask_failure_still_opens_and_logs(env, monkeypatch, caplog):
     app.translate_hotkey.cb()
     assert wait_until(lambda: FakeWindow.made and FakeWindow.made[0].opened)
     assert any("máscara falhou" in (r.exc_text or str(r.exc_info)) for r in caplog.records)
+
+
+def test_saved_conflict_skips_translate_hotkey(env, monkeypatch):
+    build, _, _, notes, _ = env
+    monkeypatch.setattr(app_mod, "load_settings", lambda: Settings(translate_hotkey=Settings().hotkey))
+    app = build()
+    assert app.hotkey is not None and app.hotkey.started
+    assert app.translate_hotkey is None
+    assert [h.hotkey for h in FakeHotkey.made] == [app.settings.hotkey]
+    assert "O atalho do tradutor é igual a outro atalho. Troque em Configurações." in notes
+
+
+def test_other_conflict_keeps_translate_hotkey(env, monkeypatch):
+    build, _, _, notes, _ = env
+    monkeypatch.setattr(app_mod, "load_settings", lambda: Settings(ptt_hotkey=Settings().hotkey))
+    app = build()
+    assert app.translate_hotkey is not None and app.translate_hotkey.started
+    assert not any("tradutor é igual" in n for n in notes)

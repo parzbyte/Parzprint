@@ -16,7 +16,7 @@ from .hotkey import GlobalHotkey, HotkeyError, is_wayland
 from .ocr import get_engine
 from .recording.controller import RecordingController
 from .overlay import CaptureSession
-from .settings import Settings, load_settings, save_settings
+from .settings import Settings, load_settings, save_settings, translate_hotkey_conflicts
 from .settings_window import SettingsWindow, owned_fields
 from .single_instance import SingleInstance
 from .translate.google import GoogleTranslator
@@ -106,6 +106,12 @@ class App(QObject):
 
     def _start_translate_hotkey(self) -> None:
         if is_wayland():
+            return
+        if translate_hotkey_conflicts(self.settings):
+            if self.translate_hotkey is not None:
+                self.translate_hotkey.stop()
+                self.translate_hotkey = None
+            self.tray.notify("Parzprint", "O atalho do tradutor é igual a outro atalho. Troque em Configurações.")
             return
         try:
             if self.translate_hotkey is None:

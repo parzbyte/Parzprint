@@ -148,3 +148,14 @@ def test_translate_unhashable_values_fall_back(tmp_path):
     for bad in ([["en"]], [{"a": 1}], [5], [None]):
         p.write_text(json.dumps({"translate_recent": bad}), encoding="utf-8")
         assert load_settings(p).translate_recent == []
+
+
+def test_translate_hotkey_conflict_only_for_translator():
+    from parzprint.settings import translate_hotkey_conflicts
+
+    s = Settings()
+    assert not translate_hotkey_conflicts(s)
+    s.ptt_hotkey = s.hotkey
+    assert not translate_hotkey_conflicts(s)
+    s.translate_hotkey = s.hotkey
+    assert translate_hotkey_conflicts(s)
