@@ -25,6 +25,7 @@ from .translate.window import TranslatorWindow
 from .tray import Tray, app_icon
 
 log = logging.getLogger(__name__)
+TRANSLATOR_FIELDS = ("translate_source", "translate_target", "translate_recent", "translate_size", "translate_pinned")
 
 
 def _safe_grab(backend_factory, grab_selection: bool) -> tuple[str, str]:
@@ -161,11 +162,15 @@ class App(QObject):
         self.translator_window.open(text, anchor, auto)
 
     def _save_from_translator(self, settings: Settings) -> None:
-        self.recorder.settings = settings
-        self._save_from_recording(settings)
+        # a janela pode ter uma cópia antiga: só os campos dela valem
+        merged = replace(self.settings, **{name: getattr(settings, name) for name in TRANSLATOR_FIELDS})
+        self.recorder.settings = merged
+        self._save_from_recording(merged)
 
     def _save_from_recording(self, settings: Settings) -> None:
         self.settings = settings
+        if self.translator_window is not None:
+            self.translator_window.settings = settings
         try:
             save_settings(settings)
         except OSError as e:

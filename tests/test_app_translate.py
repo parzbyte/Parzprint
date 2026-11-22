@@ -194,7 +194,7 @@ def test_window_settings_are_saved(env):
     app.open_translator("", QRect(0, 0, 1, 1), auto=False)
     new = replace(app.settings, translate_target="en")
     FakeWindow.made[0].on_settings_changed(new)
-    assert app.settings is new and app.recorder.settings is new and saved == [new]
+    assert app.settings == new and app.recorder.settings is app.settings and saved == [app.settings]
 
 
 def test_apply_settings_updates_window_and_rebinds(env):
@@ -321,3 +321,16 @@ def test_second_press_while_grabbing_is_ignored(env, monkeypatch):
     assert len(grabs) == 1 and len(FakeWindow.made[0].opened) == 1
     app.translate_shortcut()
     assert wait_until(lambda: len(FakeWindow.made[0].opened) == 2)
+
+
+def test_translator_save_keeps_recording_mic(env):
+    build, _, saved, *_ = env
+    app = build()
+    app.open_translator("", QRect(0, 0, 1, 1), auto=False)
+    tw = FakeWindow.made[0]
+    stale = tw.settings
+    app._save_from_recording(replace(app.settings, mic_device="X"))
+    assert tw.settings.mic_device == "X"
+    tw.on_settings_changed(replace(stale, translate_target="en"))
+    assert (saved[-1].mic_device, saved[-1].translate_target) == ("X", "en")
+    assert app.settings == saved[-1] and app.recorder.settings == saved[-1] and tw.settings == saved[-1]
