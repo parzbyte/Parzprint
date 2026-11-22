@@ -8,28 +8,20 @@ from dataclasses import replace
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeyEvent
 from PySide6.QtWidgets import (
-    QBoxLayout,
-    QComboBox,
-    QCompleter,
-    QHBoxLayout,
-    QLabel,
-    QPlainTextEdit,
-    QPushButton,
-    QSizeGrip,
-    QVBoxLayout,
-    QWidget,
+    QBoxLayout, QComboBox, QCompleter, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QSizeGrip,
+    QVBoxLayout, QWidget,
 )
 
-from .. import brand
 from ..recording.exclude import exclude_from_capture
 from ..settings import TRANSLATE_MIN_SIZE, Settings
-from ..textpanel import PANEL_STYLE
 from .google import clip, web_url
-from .languages import AUTO, name_of, ordered, push_recent
+from .languages import AUTO, LANGUAGES, name_of, ordered, push_recent
+from .style import STYLE
 
 GAP = 6
 DEBOUNCE_MS = 600
 WIDE = 560
+CODES = frozenset(code for code, _ in LANGUAGES)
 
 LOADING = "Traduzindo..."
 CLIPBOARD_HINT = "Texto que estava copiado. Aperte Enter para traduzir."
@@ -40,15 +32,6 @@ ERRORS = {
     "format": "O Google Tradutor mudou o jeito de responder. Atualize o Parzprint.",
 }
 
-STYLE = PANEL_STYLE + f"""
-QComboBox {{ background: {brand.SURFACE_2}; color: #F2F2F2; border: 1px solid {brand.BORDER};
-             border-radius: 6px; padding: 4px 8px; min-width: 150px; }}
-QComboBox QAbstractItemView {{ background: {brand.SURFACE_2}; color: #F2F2F2;
-                               selection-background-color: {brand.RED}; }}
-QPushButton#flat {{ background: transparent; border: none; padding: 2px 8px; font-size: 14px; }}
-QPushButton#flat:hover {{ background: {brand.SURFACE_3}; }}
-QPushButton#flat:checked {{ background: {brand.RED}; color: #FFFFFF; }}
-"""
 
 
 def place_window(anchor: QRect, size: QSize, available: QRect) -> QPoint:
@@ -214,7 +197,6 @@ class TranslatorWindow(QWidget):
         self._syncing = False
         self._update_detected_label()
 
-    # ---- abrir e fechar
 
     def open(self, text: str, anchor: QRect, auto: bool) -> None:
         """Mostra a janela com ``text``; se já estiver aberta, só troca o texto."""
@@ -230,6 +212,7 @@ class TranslatorWindow(QWidget):
         self._live = auto
         self._pending = None
         self._translation = ""
+        self._forget_detected()
         self._set_source_text(text)
         self.result_view.clear()
         self.status.clear()
@@ -272,7 +255,6 @@ class TranslatorWindow(QWidget):
             handle.startSystemMove()
         super().mousePressEvent(event)
 
-    # ---- teclado
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self.source_edit and event.type() == QEvent.Type.KeyPress and self._handle_key(event, True):
@@ -299,7 +281,6 @@ class TranslatorWindow(QWidget):
             self.translate_now()
         return True
 
-    # ---- tradução
 
     def _set_source_text(self, text: str) -> None:
         self._syncing = True
@@ -315,9 +296,11 @@ class TranslatorWindow(QWidget):
         self._debounce.stop()
         text, cut = clip(self.source_edit.toPlainText())
         self._show_error(None)
+        self._translation = ""
+        self._forget_detected()
+        self._update_swap()
         if not text.strip():
             self._pending = None
-            self._translation = ""
             self.result_view.clear()
             self.status.clear()
             return
@@ -342,13 +325,15 @@ class TranslatorWindow(QWidget):
             return
         self._pending = None
         self._translation = ""
-        self._show_error(ERRORS.get(kind, ERRORS["refused"]))
+        self._forget_detected()
+        self._show_error(ERRORS.get(kind, ERRORS["refused"]), retry=kind != "format")
         self._update_swap()
 
-    def _show_error(self, message: str | None) -> None:
+    def _show_error(self, message: str | None, retry: bool = True) -> None:
+        """Sem ``retry`` (resposta em formato novo), tentar de novo não adianta."""
         if message:
             self.result_view.setPlainText(message)
-        self.retry_button.setVisible(bool(message))
+        self.retry_button.setVisible(bool(message) and retry)
         self.web_button.setVisible(bool(message))
 
     def _open_web(self) -> None:
@@ -359,7 +344,6 @@ class TranslatorWindow(QWidget):
         if self._translation:
             QGuiApplication.clipboard().setText(self._translation)
 
-    # ---- idiomas
 
     def _on_language(self, box: QComboBox) -> None:
         if self._syncing or box.currentIndex() < 0:
@@ -367,8 +351,7 @@ class TranslatorWindow(QWidget):
         code = box.currentData()
         if box is self.source_box:
             self._source = code
-            self._detected = None
-            self._update_detected_label()
+            self._forget_detected()
         else:
             self._target = code
         self._save_languages(code)
@@ -378,22 +361,25 @@ class TranslatorWindow(QWidget):
 
     def swap(self) -> None:
         source = self._detected if self._source == AUTO else self._source
-        if not source:
+        if source not in CODES:
             return
         new_source, new_target = self._target, source
         self._source, self._target = new_source, new_target
-        self._detected = None
         self._syncing = True
         self.source_box.setCurrentIndex(self.source_box.findData(new_source))
         self.target_box.setCurrentIndex(self.target_box.findData(new_target))
         self._syncing = False
-        self._update_detected_label()
+        self._forget_detected()
         self._save_languages(new_target, new_source)
         if self._translation:
             self._set_source_text(self._translation)
         self._update_swap()
         if self._live:
             self.translate_now()
+
+    def _forget_detected(self) -> None:
+        self._detected = None
+        self._update_detected_label()
 
     def _update_detected_label(self) -> None:
         index = self.source_box.findData(AUTO)
@@ -407,10 +393,9 @@ class TranslatorWindow(QWidget):
             self.source_box.setEditText(label)
 
     def _update_swap(self) -> None:
-        self.swap_button.setEnabled(self._source != AUTO or bool(self._detected))
+        self.swap_button.setEnabled(self._source != AUTO or self._detected in CODES)
         self.copy_button.setEnabled(bool(self._translation))
 
-    # ---- configurações
 
     def _on_pin(self, pinned: bool) -> None:
         self._save(translate_pinned=pinned)

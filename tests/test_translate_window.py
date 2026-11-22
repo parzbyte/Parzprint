@@ -135,6 +135,58 @@ def test_swap(qapp):
     assert fake.requests[-1] == ("olá", "pt", "en")
     assert saved[-1].translate_source == "pt"
     assert saved[-1].translate_target == "en"
+    assert saved[-1].translate_recent == ["pt", "en"]
+    win.close()
+
+
+def test_detected_language_resets_on_reopen(qapp):
+    win, fake, _ = make(qapp)
+    win.open("hello", ANCHOR, auto=True)
+    fake.answer("olá", "en")
+    assert win.swap_button.isEnabled()
+    win.close()
+    win.open("hola amigo", ANCHOR, auto=True)
+    assert win.source_box.currentText() == "Detectar idioma"
+    assert not win.swap_button.isEnabled()
+    fake.answer("olá amigo", "es")
+    assert win.source_box.currentText() == "Detectar idioma: espanhol"
+    assert win.swap_button.isEnabled()
+    win.close()
+
+
+def test_detected_language_resets_on_failure(qapp):
+    win, fake, _ = make(qapp)
+    win.open("hello", ANCHOR, auto=True)
+    fake.answer("olá", "en")
+    win.retry_button.click()
+    assert win.source_box.currentText() == "Detectar idioma"
+    fake.fail("network")
+    assert win.source_box.currentText() == "Detectar idioma"
+    assert not win.swap_button.isEnabled()
+    win.close()
+
+
+def test_pending_request_hides_old_translation(qapp):
+    win, fake, _ = make(qapp)
+    win.open("hello", ANCHOR, auto=True)
+    fake.answer("olá", "en")
+    assert win.copy_button.isEnabled()
+    QGuiApplication.clipboard().setText("antes")
+    win.source_edit.setPlainText("bye")
+    QTest.keyClick(win.source_edit, Qt.Key.Key_Return)
+    assert not win.copy_button.isEnabled()
+    assert not win.swap_button.isEnabled()
+    QTest.keyClick(win.source_edit, Qt.Key.Key_Return, Qt.KeyboardModifier.ControlModifier)
+    assert QGuiApplication.clipboard().text() == "antes"
+
+
+def test_unknown_detected_language_does_not_swap(qapp):
+    win, fake, _ = make(qapp)
+    win.open("hello", ANCHOR, auto=True)
+    fake.answer("olá", "xx")
+    assert not win.swap_button.isEnabled()
+    win.swap()
+    assert win.source_box.currentData() == "auto"
     win.close()
 
 
@@ -151,10 +203,11 @@ def test_errors_show_messages(qapp):
     for kind, message in messages.items():
         fake.fail(kind)
         assert win.result_view.toPlainText() == message
-        assert not win.retry_button.isHidden()
+        assert win.retry_button.isHidden() == (kind == "format")
         assert not win.web_button.isHidden()
-        win.retry_button.click()
+        win.translate_now()
         assert win.retry_button.isHidden()
+        assert win.web_button.isHidden()
         assert fake.requests[-1] == ("hello", "auto", "pt")
     win.close()
 
