@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "parzprint"
-version = "1.0.0"
+version = "1.0.1"
 license = "MIT"
 authors = [{ name = "Parzbyte" }]
 description = "Captura de tela com anotações e extração de texto local (OCR)"
