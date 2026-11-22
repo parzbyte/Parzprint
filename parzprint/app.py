@@ -25,6 +25,8 @@ from .translate.window import TranslatorWindow
 from .tray import Tray, app_icon
 
 log = logging.getLogger(__name__)
+# a janela manda só 5.000 ao Google; isto evita encher a caixa com uma área de transferência enorme
+MAX_GRABBED_CHARS = 100_000
 TRANSLATOR_FIELDS = ("translate_source", "translate_target", "translate_recent", "translate_size", "translate_pinned")
 
 
@@ -166,7 +168,7 @@ class App(QObject):
         self._grabbing = False
         if self._quitting:
             return
-        self.open_translator(text, self._cursor_anchor(), auto=(source == "selection"))
+        self.open_translator(text[:MAX_GRABBED_CHARS], self._cursor_anchor(), auto=(source == "selection"))
 
     def _translate_from_tray(self) -> None:
         self.open_translator("", self._cursor_anchor(), auto=False)

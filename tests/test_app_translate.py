@@ -401,3 +401,10 @@ def test_grab_arriving_after_quit_is_ignored(env):
     app.quit()
     app._on_grabbed("oi", "selection")
     assert FakeWindow.made == []
+
+
+def test_huge_clipboard_text_is_cut(env):
+    build, result, *_ = env
+    app = build()
+    text, *_ = _press(app, result, Grabbed("a" * 150_000, "clipboard"))
+    assert len(text) == app_mod.MAX_GRABBED_CHARS == 100_000
