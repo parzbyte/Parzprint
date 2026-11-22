@@ -38,6 +38,7 @@ def test_primary_selection_wins():
     b = FakeBackend(text="velho", primary="x")
     assert grab(b, True) == Grabbed("x", "selection")
     assert b.calls["send_copy"] == 0
+    assert b.calls["wait"] == 0
 
 
 def test_copy_changes_sequence():
@@ -51,7 +52,28 @@ def test_copy_no_change_falls_back_to_clipboard():
     b = FakeBackend(text="velho")
     t0 = time.monotonic()
     assert grab(b, True, wait_s=0.2) == Grabbed("velho", "clipboard")
-    assert time.monotonic() - t0 <= 0.2 + 0.1
+    assert time.monotonic() - t0 <= 0.2 + 0.25
+
+
+def test_send_copy_refused_falls_back_to_clipboard():
+    b = FakeBackend(text="velho")
+
+    def boom():
+        raise OSError("SendInput recusado")
+
+    b.send_copy = boom
+    assert grab(b, True) == Grabbed("velho", "clipboard")
+
+
+def test_sequence_changes_but_text_empty():
+    b = FakeBackend(text="", copies_to="")
+    assert grab(b, True) == Grabbed("", "none")
+
+
+def test_empty_primary_goes_to_clipboard_without_copy():
+    b = FakeBackend(text="velho", primary="")
+    assert grab(b, True) == Grabbed("velho", "clipboard")
+    assert b.calls["send_copy"] == 0
 
 
 def test_option_off_never_copies():

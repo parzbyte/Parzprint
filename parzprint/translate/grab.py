@@ -32,9 +32,12 @@ def grab(backend: Backend, grab_selection: bool, wait_s: float = 0.3, poll_s: fl
         if primary is None:
             backend.wait_modifiers_released(0.5)
             before = backend.sequence()
-            backend.send_copy()
+            try:
+                backend.send_copy()
+            except OSError:
+                before = None
             deadline = time.monotonic() + wait_s
-            while True:
+            while before is not None:
                 if backend.sequence() != before:
                     text = backend.read_text()
                     if text:
@@ -81,29 +84,27 @@ _CF_UNICODETEXT = 13
 class WinBackend:
     """Windows via ctypes. Pode rodar fora da thread da interface."""
 
-    _declared = False
-
     def __init__(self) -> None:
         from ctypes import wintypes
 
-        self._user32, self._kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
-        if not WinBackend._declared:
-            u, k, H = self._user32, self._kernel32, wintypes.HANDLE
-            u.GetClipboardSequenceNumber.restype = wintypes.DWORD
-            u.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(_INPUT), ctypes.c_int]
-            u.SendInput.restype = wintypes.UINT
-            u.GetAsyncKeyState.argtypes = [ctypes.c_int]
-            u.GetAsyncKeyState.restype = ctypes.c_short
-            u.OpenClipboard.argtypes = [wintypes.HWND]
-            u.OpenClipboard.restype = wintypes.BOOL
-            u.CloseClipboard.restype = wintypes.BOOL
-            u.GetClipboardData.argtypes = [wintypes.UINT]
-            u.GetClipboardData.restype = H
-            k.GlobalLock.argtypes = [H]
-            k.GlobalLock.restype = ctypes.c_void_p
-            k.GlobalUnlock.argtypes = [H]
-            k.GlobalUnlock.restype = wintypes.BOOL
-            WinBackend._declared = True
+        # instâncias próprias: declarar tipos em ctypes.windll mudaria as funções para o processo todo
+        u = self._user32 = ctypes.WinDLL("user32", use_last_error=True)
+        k = self._kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        H = wintypes.HANDLE
+        u.GetClipboardSequenceNumber.restype = wintypes.DWORD
+        u.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(_INPUT), ctypes.c_int]
+        u.SendInput.restype = wintypes.UINT
+        u.GetAsyncKeyState.argtypes = [ctypes.c_int]
+        u.GetAsyncKeyState.restype = ctypes.c_short
+        u.OpenClipboard.argtypes = [wintypes.HWND]
+        u.OpenClipboard.restype = wintypes.BOOL
+        u.CloseClipboard.restype = wintypes.BOOL
+        u.GetClipboardData.argtypes = [wintypes.UINT]
+        u.GetClipboardData.restype = H
+        k.GlobalLock.argtypes = [H]
+        k.GlobalLock.restype = ctypes.c_void_p
+        k.GlobalUnlock.argtypes = [H]
+        k.GlobalUnlock.restype = wintypes.BOOL
 
     def sequence(self) -> int:
         return int(self._user32.GetClipboardSequenceNumber())
